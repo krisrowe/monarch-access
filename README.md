@@ -104,6 +104,42 @@ monarch transactions list --start 2025-01-01 --format csv
 monarch transactions list --start 2025-01-01 --limit 50
 ```
 
+JSON output example:
+
+```
+$ monarch transactions list --start 2025-01-01 --limit 1 --format json
+{
+  "transactions": [
+    {
+      "id": "311447260750935400",
+      "amount": -127.43,
+      "pending": false,
+      "date": "2025-01-15",
+      "hideFromReports": false,
+      "needsReview": false,
+      "plaidName": "AMAZON #7491",
+      "notes": "",
+      "isRecurring": false,
+      "account": {
+        "id": "acc_004",
+        "displayName": "Rewards Card"
+      },
+      "merchant": {
+        "id": "merch_amazon",
+        "name": "Amazon"
+      },
+      "category": {
+        "id": "cat_005",
+        "name": "Shopping"
+      },
+      "tags": []
+    }
+  ],
+  "count": 1,
+  "total": 147
+}
+```
+
 ### Get a Single Transaction
 
 ```bash
