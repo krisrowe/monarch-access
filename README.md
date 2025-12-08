@@ -77,6 +77,29 @@ monarch transactions list --start 2025-01-01 --format csv
 monarch transactions list --start 2025-01-01 --limit 50
 ```
 
+### Get a Single Transaction
+
+```bash
+monarch transactions get TRANSACTION_ID
+monarch transactions get TRANSACTION_ID --format json
+```
+
+### Update a Transaction
+
+```bash
+# Update notes
+monarch transactions update TRANSACTION_ID --notes "New note"
+
+# Update category (by name)
+monarch transactions update TRANSACTION_ID --category "Groceries"
+
+# Update merchant
+monarch transactions update TRANSACTION_ID --merchant "Amazon"
+
+# Clear notes (use empty string)
+monarch transactions update TRANSACTION_ID --notes ""
+```
+
 ### List Accounts
 
 ```bash
@@ -99,23 +122,37 @@ Shows assets and liabilities grouped by category with totals.
 
 ```python
 import asyncio
-from monarch import MonarchClient
+from monarch.client import MonarchClient
+from monarch import accounts, categories
+from monarch.transactions import list as txn_list, get as txn_get, update as txn_update
 
 async def main():
     client = MonarchClient()
 
     # Get all accounts
-    accounts = await client.get_accounts()
+    accts = await accounts.get_accounts(client)
 
     # Get transactions
-    transactions = await client.get_transactions(
+    data = await txn_list.get_transactions(
+        client,
         limit=100,
         start_date="2025-01-01",
         end_date="2025-12-31",
     )
+    txns = data["results"]
+
+    # Get a single transaction
+    txn = await txn_get.get_transaction(client, "some-transaction-id")
+
+    # Update a transaction
+    updated = await txn_update.update_transaction(
+        client,
+        transaction_id="some-transaction-id",
+        notes="Updated via SDK",
+    )
 
     # Get categories
-    categories = await client.get_categories()
+    cats = await categories.get_categories(client)
 
 asyncio.run(main())
 ```
@@ -124,18 +161,29 @@ asyncio.run(main())
 
 ```
 monarch-access/
-├── pyproject.toml      # Package config and dependencies
-└── monarch/            # SDK package
+├── pyproject.toml        # Package config and dependencies
+└── monarch/              # SDK package
     ├── __init__.py
-    ├── cli.py          # CLI entry point
-    ├── client.py       # MonarchClient - auth & API requests
-    ├── queries.py      # GraphQL queries
-    ├── accounts.py     # Account formatting
-    ├── transactions.py # Transaction formatting
-    └── net_worth.py    # Net worth report logic & formatting
+    ├── cli.py            # CLI entry point
+    ├── client.py         # MonarchClient - auth & API requests
+    ├── queries.py        # GraphQL queries
+    ├── accounts.py       # Account operations & formatting
+    ├── categories.py     # Category operations
+    ├── net_worth.py      # Net worth report logic & formatting
+    └── transactions/     # Transaction operations
+        ├── list.py       # List transactions
+        ├── get.py        # Get single transaction
+        └── update.py     # Update transaction
 
-~/.config/monarch/token # Auth token (created by monarch auth)
+~/.config/monarch/token   # Auth token (created by monarch auth)
 ```
+
+## Future Enhancements
+
+- **User configuration** (`~/.config/monarch/config.yaml`): Store user preferences like default columns for transaction lists, default output format, etc.
+  - `monarch config set transactions.columns "date,merchant,amount,category"`
+  - `monarch config get transactions.columns`
+- **MCP server**: Expose Monarch data to AI assistants via Model Context Protocol
 
 ## License
 
