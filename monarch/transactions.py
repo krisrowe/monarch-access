@@ -41,9 +41,7 @@ def format_text(transactions: list[dict]) -> str:
         return f"${amount:,.2f}"
 
     lines = []
-    lines.append(f"Transactions ({len(transactions)})")
-    lines.append("=" * 85)
-    lines.append("")
+    lines.append(f"TRANSACTIONS ({len(transactions)})")
 
     col_widths = [10, 24, 20, 12]
     alignments = ["l", "l", "l", "r"]

@@ -41,9 +41,7 @@ def format_text(accounts: list[dict]) -> str:
         by_type.setdefault(acc_type, []).append(acc)
 
     lines = []
-    lines.append("Accounts")
-    lines.append("=" * 70)
-    lines.append("")
+    lines.append(f"ACCOUNTS ({len(accounts)})")
 
     col_widths = [30, 18, 14]
     alignments = ["l", "l", "r"]

@@ -9,8 +9,8 @@ from typing import Optional
 
 import click
 
-from monarch import MonarchClient, accounts, net_worth, transactions
-from monarch.client import AuthenticationError, APIError
+from . import accounts, net_worth, transactions
+from .client import MonarchClient, AuthenticationError, APIError
 
 
 def run_async(coro):

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "monarch-access"
+version = "0.1.0"
+description = "Lightweight CLI and Python SDK for accessing Monarch Money financial data"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.8.0",
+    "click>=8.0.0",
+]
+
+[project.scripts]
+monarch = "monarch.cli:cli"
+
+[project.urls]
+Homepage = "https://github.com/krisrowe/monarch-access"
+Repository = "https://github.com/krisrowe/monarch-access"
+
+[tool.setuptools.packages.find]
+include = ["monarch*"]

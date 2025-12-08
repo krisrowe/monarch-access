@@ -158,7 +158,6 @@ def format_text(report: dict) -> str:
     # Assets table
     if report["assets"]["categories"]:
         lines.append("ASSETS")
-        lines.append("-" * 60)
 
         col_widths = [30, 20, 14]
         alignments = ["l", "l", "r"]
@@ -176,7 +175,6 @@ def format_text(report: dict) -> str:
     # Liabilities table
     if report["liabilities"]["categories"]:
         lines.append("LIABILITIES")
-        lines.append("-" * 60)
 
         col_widths = [30, 20, 14]
         alignments = ["l", "l", "r"]

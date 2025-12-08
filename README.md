@@ -7,18 +7,19 @@ Lightweight CLI and Python SDK for accessing [Monarch Money](https://www.monarch
 - Python 3.10+
 - A Monarch Money account
 
-## Setup
+## Installation
 
 ```bash
-# Clone and enter directory
+# Clone and install
 git clone <repo-url>
 cd monarch-access
+pip install .
 
-# Create virtual environment and install dependencies
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# Or install in development mode
+pip install -e .
 ```
+
+This installs the `monarch` command globally in your environment.
 
 ## Authentication
 
@@ -33,7 +34,7 @@ Monarch Money doesn't have a public API, so you need to grab your session token 
 4. Copy the token string
 5. Save it:
    ```bash
-   python cli.py auth "YOUR_TOKEN_HERE"
+   monarch auth "YOUR_TOKEN_HERE"
    ```
 
 The token is saved to `~/.config/monarch/token` and typically lasts several months. You'll need to repeat this when it expires.
@@ -46,39 +47,39 @@ All commands default to text format with ASCII tables. Use `--format json` or `-
 
 ```bash
 # Basic usage (requires both --after and --before)
-python cli.py transactions list --after 2025-01-01 --before 2025-12-31
+monarch transactions list --after 2025-01-01 --before 2025-12-31
 
 # Filter by account (supports wildcards)
-python cli.py transactions list --after 2025-01-01 --before 2025-12-31 --account "Chase*"
+monarch transactions list --after 2025-01-01 --before 2025-12-31 --account "Chase*"
 
 # Filter by category (comma-separated)
-python cli.py transactions list --after 2025-01-01 --before 2025-12-31 --category "Shopping,Groceries"
+monarch transactions list --after 2025-01-01 --before 2025-12-31 --category "Shopping,Groceries"
 
 # Filter by merchant (supports wildcards)
-python cli.py transactions list --after 2025-01-01 --before 2025-12-31 --merchant "*amazon*"
+monarch transactions list --after 2025-01-01 --before 2025-12-31 --merchant "*amazon*"
 
 # Output as JSON or CSV
-python cli.py transactions list --after 2025-01-01 --before 2025-12-31 --format json
-python cli.py transactions list --after 2025-01-01 --before 2025-12-31 --format csv
+monarch transactions list --after 2025-01-01 --before 2025-12-31 --format json
+monarch transactions list --after 2025-01-01 --before 2025-12-31 --format csv
 
 # Limit results
-python cli.py transactions list --after 2025-01-01 --before 2025-12-31 --limit 50
+monarch transactions list --after 2025-01-01 --before 2025-12-31 --limit 50
 ```
 
 ### List Accounts
 
 ```bash
-python cli.py accounts
-python cli.py accounts --format json
-python cli.py accounts --format csv
+monarch accounts
+monarch accounts --format json
+monarch accounts --format csv
 ```
 
 ### Net Worth Report
 
 ```bash
-python cli.py net-worth
-python cli.py net-worth --format json
-python cli.py net-worth --format csv
+monarch net-worth
+monarch net-worth --format json
+monarch net-worth --format csv
 ```
 
 Shows assets and liabilities grouped by category with totals.
@@ -112,17 +113,17 @@ asyncio.run(main())
 
 ```
 monarch-access/
-├── cli.py              # CLI entry point
-├── requirements.txt    # Dependencies (aiohttp, click)
+├── pyproject.toml      # Package config and dependencies
 └── monarch/            # SDK package
     ├── __init__.py
+    ├── cli.py          # CLI entry point
     ├── client.py       # MonarchClient - auth & API requests
     ├── queries.py      # GraphQL queries
     ├── accounts.py     # Account formatting
     ├── transactions.py # Transaction formatting
     └── net_worth.py    # Net worth report logic & formatting
 
-~/.config/monarch/token # Auth token (created by cli.py auth)
+~/.config/monarch/token # Auth token (created by monarch auth)
 ```
 
 ## License
