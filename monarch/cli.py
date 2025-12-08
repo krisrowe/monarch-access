@@ -35,8 +35,8 @@ def transactions_group():
 @click.option("--format", "output_format", type=click.Choice(["text", "json", "csv"]), default="text", help="Output format")
 @click.option("--account", multiple=True, help="Filter by account name (comma-separated or multiple flags)")
 @click.option("--category", multiple=True, help="Filter by category name (comma-separated or multiple flags)")
-@click.option("--after", "after_date", help="Include transactions on or after this date (YYYY-MM-DD)")
-@click.option("--before", "before_date", help="Exclude transactions on or after this date (YYYY-MM-DD)")
+@click.option("--start", "start_date", help="Start date, inclusive (YYYY-MM-DD)")
+@click.option("--end", "end_date", help="End date, inclusive (YYYY-MM-DD)")
 @click.option("--merchant", help="Filter by merchant name (supports * wildcards)")
 @click.option("--notes", help="Filter by notes content (supports * wildcards)")
 @click.option("--original-statement", "original_statement", help="Filter by original statement (supports * wildcards)")
@@ -45,8 +45,8 @@ def list_transactions(
     output_format: str,
     account: tuple,
     category: tuple,
-    after_date: Optional[str],
-    before_date: Optional[str],
+    start_date: Optional[str],
+    end_date: Optional[str],
     merchant: Optional[str],
     notes: Optional[str],
     original_statement: Optional[str],
@@ -55,7 +55,7 @@ def list_transactions(
     """List transactions with optional filters."""
     try:
         result = run_async(_list_transactions(
-            output_format, account, category, after_date, before_date,
+            output_format, account, category, start_date, end_date,
             merchant, notes, original_statement, limit
         ))
         click.echo(result)
@@ -71,8 +71,8 @@ async def _list_transactions(
     output_format: str,
     account: tuple,
     category: tuple,
-    after_date: Optional[str],
-    before_date: Optional[str],
+    start_date: Optional[str],
+    end_date: Optional[str],
     merchant: Optional[str],
     notes: Optional[str],
     original_statement: Optional[str],
@@ -110,13 +110,14 @@ async def _list_transactions(
     # Fetch transactions
     data = await client.get_transactions(
         limit=limit,
-        start_date=after_date,
-        end_date=before_date,
+        start_date=start_date,
+        end_date=end_date,
         account_ids=account_ids,
         category_ids=category_ids,
     )
 
     txns = data.get("results", [])
+    total_count = data.get("totalCount", 0)
 
     # Apply client-side filters (merchant, notes, original_statement)
     if merchant:
@@ -126,13 +127,26 @@ async def _list_transactions(
     if original_statement:
         txns = [t for t in txns if _wildcard_match(t.get("plaidName") or "", original_statement)]
 
+    # Check if there are more results than returned
+    truncated = total_count > limit
+
     # Format output
     if output_format == "json":
-        return json.dumps(txns, indent=2, default=str)
+        result = {"transactions": txns, "count": len(txns), "total": total_count}
+        if truncated:
+            result["truncated"] = True
+            result["message"] = f"Showing {limit} of {total_count} transactions. Use --limit to fetch more."
+        return json.dumps(result, indent=2, default=str)
     elif output_format == "csv":
-        return transactions.format_csv(txns)
+        output = transactions.format_csv(txns)
+        if truncated:
+            output += f"\n# Showing {limit} of {total_count} transactions. Use --limit to fetch more.\n"
+        return output
     else:
-        return transactions.format_text(txns)
+        output = transactions.format_text(txns)
+        if truncated:
+            output += f"\n\n(Showing {limit} of {total_count} transactions. Use --limit to fetch more.)"
+        return output
 
 
 def _parse_multi_option(values: tuple) -> list[str]:

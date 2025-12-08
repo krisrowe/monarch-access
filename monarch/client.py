@@ -125,12 +125,11 @@ class MonarchClient:
         if search:
             variables["filters"]["search"] = search
 
-        # API requires both start and end date if either is specified
-        if start_date and end_date:
+        # Add date filters if provided
+        if start_date:
             variables["filters"]["startDate"] = start_date
+        if end_date:
             variables["filters"]["endDate"] = end_date
-        elif start_date or end_date:
-            raise ValueError("Both start_date and end_date must be provided together")
 
         data = await self._request(TRANSACTIONS_QUERY, variables)
         return data.get("allTransactions", {"totalCount": 0, "results": []})

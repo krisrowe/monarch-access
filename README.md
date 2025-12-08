@@ -5,7 +5,7 @@ Lightweight CLI and Python SDK for accessing [Monarch Money](https://www.monarch
 ```bash
 monarch accounts
 monarch net-worth
-monarch transactions list --after 2025-01-01 --before 2025-12-31
+monarch transactions list --start 2025-01-01
 ```
 
 ## Installation
@@ -54,24 +54,27 @@ All commands default to text format with ASCII tables. Use `--format json` or `-
 ### List Transactions
 
 ```bash
-# Basic usage (requires both --after and --before)
-monarch transactions list --after 2025-01-01 --before 2025-12-31
+# Transactions since a date
+monarch transactions list --start 2025-12-01
+
+# Date range (both inclusive)
+monarch transactions list --start 2025-01-01 --end 2025-12-31
 
 # Filter by account (supports wildcards)
-monarch transactions list --after 2025-01-01 --before 2025-12-31 --account "Chase*"
+monarch transactions list --start 2025-01-01 --account "Chase*"
 
 # Filter by category (comma-separated)
-monarch transactions list --after 2025-01-01 --before 2025-12-31 --category "Shopping,Groceries"
+monarch transactions list --start 2025-01-01 --category "Shopping,Groceries"
 
 # Filter by merchant (supports wildcards)
-monarch transactions list --after 2025-01-01 --before 2025-12-31 --merchant "*amazon*"
+monarch transactions list --start 2025-01-01 --merchant "*amazon*"
 
 # Output as JSON or CSV
-monarch transactions list --after 2025-01-01 --before 2025-12-31 --format json
-monarch transactions list --after 2025-01-01 --before 2025-12-31 --format csv
+monarch transactions list --start 2025-01-01 --format json
+monarch transactions list --start 2025-01-01 --format csv
 
-# Limit results
-monarch transactions list --after 2025-01-01 --before 2025-12-31 --limit 50
+# Limit results (default 1000)
+monarch transactions list --start 2025-01-01 --limit 50
 ```
 
 ### List Accounts
