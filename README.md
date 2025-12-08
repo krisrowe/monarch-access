@@ -2,24 +2,32 @@
 
 Lightweight CLI and Python SDK for accessing [Monarch Money](https://www.monarchmoney.com/) financial data.
 
-## Requirements
-
-- Python 3.10+
-- A Monarch Money account
+```bash
+monarch accounts
+monarch net-worth
+monarch transactions list --after 2025-01-01 --before 2025-12-31
+```
 
 ## Installation
 
 ```bash
-# Clone and install
-git clone <repo-url>
-cd monarch-access
-pip install .
-
-# Or install in development mode
-pip install -e .
+pip install git+https://github.com/krisrowe/monarch-access.git
 ```
 
-This installs the `monarch` command globally in your environment.
+Or clone and install locally:
+
+```bash
+git clone https://github.com/krisrowe/monarch-access.git
+cd monarch-access
+pip install .
+```
+
+This installs the `monarch` command globally.
+
+## Requirements
+
+- Python 3.10+
+- A Monarch Money account
 
 ## Authentication
 
