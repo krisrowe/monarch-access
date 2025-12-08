@@ -1,7 +1,43 @@
-"""Transaction formatting utilities."""
+"""List transactions."""
 
 import csv
 import io
+from typing import Any, Optional
+
+from ..queries import TRANSACTIONS_QUERY
+
+
+async def get_transactions(
+    client,
+    limit: int = 100,
+    offset: int = 0,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    account_ids: Optional[list[str]] = None,
+    category_ids: Optional[list[str]] = None,
+    search: Optional[str] = None,
+) -> dict:
+    """Get transactions with optional filters."""
+    variables: dict[str, Any] = {
+        "limit": limit,
+        "offset": offset,
+        "filters": {
+            "accounts": account_ids or [],
+            "categories": category_ids or [],
+        }
+    }
+
+    if search:
+        variables["filters"]["search"] = search
+
+    # Add date filters if provided
+    if start_date:
+        variables["filters"]["startDate"] = start_date
+    if end_date:
+        variables["filters"]["endDate"] = end_date
+
+    data = await client._request(TRANSACTIONS_QUERY, variables)
+    return data.get("allTransactions", {"totalCount": 0, "results": []})
 
 
 def format_csv(transactions: list[dict]) -> str:

@@ -85,3 +85,81 @@ query GetTransactionCategories {
   }
 }
 """
+
+UPDATE_TRANSACTION_MUTATION = """
+mutation UpdateTransaction($input: UpdateTransactionMutationInput!) {
+  updateTransaction(input: $input) {
+    transaction {
+      id
+      amount
+      pending
+      date
+      hideFromReports
+      needsReview
+      plaidName
+      notes
+      isRecurring
+      isSplitTransaction
+      account {
+        id
+        displayName
+      }
+      category {
+        id
+        name
+      }
+      merchant {
+        id
+        name
+      }
+      tags {
+        id
+        name
+        color
+      }
+    }
+    errors {
+      fieldErrors {
+        field
+        messages
+      }
+      message
+      code
+    }
+  }
+}
+"""
+
+GET_TRANSACTION_QUERY = """
+query GetTransaction($id: UUID!) {
+  getTransaction(id: $id) {
+    id
+    amount
+    pending
+    date
+    hideFromReports
+    needsReview
+    plaidName
+    notes
+    isRecurring
+    isSplitTransaction
+    account {
+      id
+      displayName
+    }
+    category {
+      id
+      name
+    }
+    merchant {
+      id
+      name
+    }
+    tags {
+      id
+      name
+      color
+    }
+  }
+}
+"""

@@ -1,12 +1,9 @@
 """Monarch Money API client."""
 
-import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import aiohttp
-
-from .queries import ACCOUNTS_QUERY, TRANSACTIONS_QUERY, TRANSACTION_CATEGORIES_QUERY
 
 DEFAULT_TOKEN_FILE = Path.home() / ".config" / "monarch" / "token"
 GRAPHQL_URL = "https://api.monarchmoney.com/graphql"
@@ -96,45 +93,3 @@ class MonarchClient:
                     raise APIError(f"GraphQL error: {data['errors']}")
 
                 return data.get("data", {})
-
-    async def get_accounts(self) -> list[dict]:
-        """Get all accounts."""
-        data = await self._request(ACCOUNTS_QUERY)
-        return data.get("accounts", [])
-
-    async def get_transactions(
-        self,
-        limit: int = 100,
-        offset: int = 0,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        account_ids: Optional[list[str]] = None,
-        category_ids: Optional[list[str]] = None,
-        search: Optional[str] = None,
-    ) -> dict:
-        """Get transactions with optional filters."""
-        variables: dict[str, Any] = {
-            "limit": limit,
-            "offset": offset,
-            "filters": {
-                "accounts": account_ids or [],
-                "categories": category_ids or [],
-            }
-        }
-
-        if search:
-            variables["filters"]["search"] = search
-
-        # Add date filters if provided
-        if start_date:
-            variables["filters"]["startDate"] = start_date
-        if end_date:
-            variables["filters"]["endDate"] = end_date
-
-        data = await self._request(TRANSACTIONS_QUERY, variables)
-        return data.get("allTransactions", {"totalCount": 0, "results": []})
-
-    async def get_categories(self) -> list[dict]:
-        """Get all transaction categories."""
-        data = await self._request(TRANSACTION_CATEGORIES_QUERY)
-        return data.get("categories", [])

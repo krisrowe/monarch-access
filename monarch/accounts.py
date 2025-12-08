@@ -1,7 +1,15 @@
-"""Account formatting utilities."""
+"""Account operations."""
 
 import csv
 import io
+
+from .queries import ACCOUNTS_QUERY
+
+
+async def get_accounts(client) -> list[dict]:
+    """Get all accounts."""
+    data = await client._request(ACCOUNTS_QUERY)
+    return data.get("accounts", [])
 
 
 def format_csv(accounts: list[dict]) -> str:
