@@ -157,27 +157,6 @@ async def main():
 asyncio.run(main())
 ```
 
-## Project Structure
-
-```
-monarch-access/
-├── pyproject.toml        # Package config and dependencies
-└── monarch/              # SDK package
-    ├── __init__.py
-    ├── cli.py            # CLI entry point
-    ├── client.py         # MonarchClient - auth & API requests
-    ├── queries.py        # GraphQL queries
-    ├── accounts.py       # Account operations & formatting
-    ├── categories.py     # Category operations
-    ├── net_worth.py      # Net worth report logic & formatting
-    └── transactions/     # Transaction operations
-        ├── list.py       # List transactions
-        ├── get.py        # Get single transaction
-        └── update.py     # Update transaction
-
-~/.config/monarch/token   # Auth token (created by monarch auth)
-```
-
 ## Future Enhancements
 
 - **User configuration** (`~/.config/monarch/config.yaml`): Store user preferences like default columns for transaction lists, default output format, etc.
