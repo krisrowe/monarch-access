@@ -6,13 +6,19 @@ making it consumable by LLMs like Claude Desktop, Gemini CLI, and other MCP clie
 Uses async functions directly (like ticktick-access) to avoid event loop conflicts.
 """
 
+import contextlib
 import json
 import logging
 import os
+from contextvars import ContextVar
 from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+from starlette.applications import Starlette
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.responses import JSONResponse
 
 from ..client import MonarchClient, AuthenticationError, APIError
 from ..queries import (
@@ -32,6 +38,9 @@ log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Request-scoped token from HTTP clients
+_request_token: ContextVar[str | None] = ContextVar("_request_token", default=None)
+
 # Initialize FastMCP server
 mcp = FastMCP("monarch")
 
@@ -39,11 +48,13 @@ mcp = FastMCP("monarch")
 def _get_client() -> MonarchClient:
     """Get MonarchClient instance.
 
-    Token resolution is handled by the config module:
-    1. MONARCH_TOKEN environment variable
-    2. Token file at ~/.config/monarch/token (or MONARCH_TOKEN_FILE)
+    Token resolution order:
+    1. Client-supplied token from HTTP request (Authorization header or ?token= param)
+    2. MONARCH_TOKEN environment variable
+    3. Token file at ~/.config/monarch/token (or MONARCH_TOKEN_FILE)
     """
-    return MonarchClient()
+    token = _request_token.get()
+    return MonarchClient(token=token) if token else MonarchClient()
 
 
 # --- Async API helpers ---
@@ -653,8 +664,48 @@ def run_server():
 
 
 # ASGI application for HTTP transport (uvicorn)
-# Usage: uvicorn monarch.mcp.server:mcp_app --host 0.0.0.0 --port 8000
-mcp_app = mcp.streamable_http_app()
+# Usage: uvicorn monarch.mcp.server:mcp_app --host 0.0.0.0 --port 8080
+
+
+class TokenMiddleware(BaseHTTPMiddleware):
+    """Extract bearer token from request and set in context for the handler."""
+
+    async def dispatch(self, request, call_next):
+        auth_header = request.headers.get("Authorization")
+        token = None
+
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+        else:
+            token = request.query_params.get("token")
+
+        if not token:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+        ctx_token = _request_token.set(token)
+        try:
+            return await call_next(request)
+        finally:
+            _request_token.reset(ctx_token)
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(app):
+    async with mcp.session_manager.run():
+        yield
+
+
+mcp_app = Starlette(lifespan=_lifespan)
+mcp_app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+mcp_app.add_middleware(TokenMiddleware)
+
+
+@mcp_app.route("/health")
+async def health(request):
+    return JSONResponse({"status": "ok"})
+
+
+mcp_app.mount("/", mcp.streamable_http_app())
 
 
 if __name__ == "__main__":
