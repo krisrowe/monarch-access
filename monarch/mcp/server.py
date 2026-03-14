@@ -675,51 +675,33 @@ async def delete_transaction_tool(
 
 @mcp.tool(
     name="list_recurring",
-    description="List recurring transaction items (bills, subscriptions, loan payments, credit card payments) from Monarch Money. Returns items for a date range showing merchant, expected amount, frequency, payment status (paid/upcoming/overdue), and linked account. Defaults to the current month if no dates specified.",
+    description="List tracked recurring obligations (bills, subscriptions, loan payments, credit card payments) from Monarch Money. Returns the stable list of recurring streams — one entry per obligation — with current-month payment status. Each item includes merchant, expected amount, frequency, category, account, and whether this month's payment has been made.",
 )
-async def list_recurring_tool(
-    start_date: Optional[str] = Field(
-        default=None,
-        description="Start date (YYYY-MM-DD). Defaults to first of current month.",
-    ),
-    end_date: Optional[str] = Field(
-        default=None,
-        description="End date (YYYY-MM-DD). Defaults to last of current month.",
-    ),
-) -> dict[str, Any]:
-    """Retrieve recurring transaction items from Monarch Money."""
+async def list_recurring_tool() -> dict[str, Any]:
+    """Retrieve the list of recurring obligations from Monarch Money."""
     try:
-        from datetime import date
-        import calendar
+        from ..recurring import _current_month_range, collapse_to_streams
 
         client = _get_client()
 
-        # Default to current month
-        if not start_date:
-            today = date.today()
-            start_date = today.replace(day=1).isoformat()
-        if not end_date:
-            today = date.today()
-            last_day = calendar.monthrange(today.year, today.month)[1]
-            end_date = today.replace(day=last_day).isoformat()
-
+        start_date, end_date = _current_month_range()
         items = await get_recurring_transaction_items(
             client,
             start_date=start_date,
             end_date=end_date,
         )
 
+        streams = collapse_to_streams(items)
+
         return {
-            "recurring_items": items,
-            "count": len(items),
-            "start_date": start_date,
-            "end_date": end_date,
+            "recurring": streams,
+            "count": len(streams),
         }
     except AuthenticationError as e:
-        return {"error": str(e), "recurring_items": [], "count": 0}
+        return {"error": str(e), "recurring": [], "count": 0}
     except Exception as e:
         logger.error(f"Error listing recurring items: {e}")
-        return {"error": str(e), "recurring_items": [], "count": 0}
+        return {"error": str(e), "recurring": [], "count": 0}
 
 
 # =============================================================================

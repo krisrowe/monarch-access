@@ -430,12 +430,13 @@ def _update_transaction(
 
 @cli.command("recurring")
 @click.option("--format", "output_format", type=click.Choice(["text", "json", "csv"]), default="text", help="Output format")
-@click.option("--start", "start_date", help="Start date, inclusive (YYYY-MM-DD). Defaults to first of current month.")
-@click.option("--end", "end_date", help="End date, inclusive (YYYY-MM-DD). Defaults to last of current month.")
-def list_recurring(output_format: str, start_date: Optional[str], end_date: Optional[str]):
-    """List recurring transaction items (bills, subscriptions, loan payments)."""
+def list_recurring(output_format: str):
+    """List tracked recurring obligations (bills, subscriptions, loan payments).
+
+    Shows the stable list of recurring streams with current-month payment status.
+    """
     try:
-        result = _list_recurring(output_format, start_date, end_date)
+        result = _list_recurring(output_format)
         click.echo(result)
     except AuthenticationError as e:
         click.echo(f"Authentication error: {e}", err=True)
@@ -445,33 +446,24 @@ def list_recurring(output_format: str, start_date: Optional[str], end_date: Opti
         sys.exit(1)
 
 
-def _list_recurring(output_format: str, start_date: Optional[str], end_date: Optional[str]) -> str:
+def _list_recurring(output_format: str) -> str:
     """Implementation of list recurring."""
-    from datetime import date
-    import calendar
-
     provider = get_provider()
 
-    # Default to current month
-    if not start_date:
-        today = date.today()
-        start_date = today.replace(day=1).isoformat()
-    if not end_date:
-        today = date.today()
-        last_day = calendar.monthrange(today.year, today.month)[1]
-        end_date = today.replace(day=last_day).isoformat()
-
+    start_date, end_date = recurring._current_month_range()
     items = provider.get_recurring_transaction_items(
         start_date=start_date,
         end_date=end_date,
     )
 
+    streams = recurring.collapse_to_streams(items)
+
     if output_format == "json":
-        return json.dumps(items, indent=2, default=str)
+        return json.dumps(streams, indent=2, default=str)
     elif output_format == "csv":
-        return recurring.format_csv(items)
+        return recurring.format_csv(streams)
     else:
-        return recurring.format_text(items)
+        return recurring.format_text(streams)
 
 
 @cli.command("accounts")

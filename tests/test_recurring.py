@@ -2,16 +2,17 @@
 
 from datetime import date, timedelta
 
+from monarch.recurring import collapse_to_streams
 
-class TestRecurringList:
-    """Test listing recurring transaction items."""
+
+class TestRecurringRawItems:
+    """Test the raw recurring transaction items from the provider."""
 
     def test_get_recurring_returns_list(self, local_provider):
         """Test that get_recurring_transaction_items returns a list."""
         today = date.today()
-        start = today.replace(day=1).isoformat()
-        # Use a wide range to capture all test data
-        end = (today.replace(day=1) + timedelta(days=365)).isoformat()
+        start = (today - timedelta(days=365)).isoformat()
+        end = (today + timedelta(days=365)).isoformat()
 
         items = local_provider.get_recurring_transaction_items(
             start_date=start,
@@ -32,9 +33,7 @@ class TestRecurringList:
             end_date=end,
         )
 
-        assert len(items) > 0
         item = items[0]
-
         assert "stream" in item
         assert "date" in item
         assert "isPast" in item
@@ -42,27 +41,8 @@ class TestRecurringList:
         assert "category" in item
         assert "account" in item
 
-    def test_recurring_stream_has_expected_fields(self, local_provider):
-        """Test that the stream object has merchant, frequency, amount."""
-        today = date.today()
-        start = (today - timedelta(days=365)).isoformat()
-        end = (today + timedelta(days=365)).isoformat()
-
-        items = local_provider.get_recurring_transaction_items(
-            start_date=start,
-            end_date=end,
-        )
-
-        stream = items[0]["stream"]
-        assert "id" in stream
-        assert "frequency" in stream
-        assert "amount" in stream
-        assert "merchant" in stream
-        assert "name" in stream["merchant"]
-
-    def test_recurring_date_filter(self, local_provider):
-        """Test that date filtering works."""
-        # Use a very narrow range that shouldn't match any items
+    def test_recurring_date_filter_excludes(self, local_provider):
+        """Test that date filtering excludes items outside range."""
         items = local_provider.get_recurring_transaction_items(
             start_date="2020-01-01",
             end_date="2020-01-02",
@@ -71,8 +51,12 @@ class TestRecurringList:
         assert isinstance(items, list)
         assert len(items) == 0
 
-    def test_recurring_includes_multiple_streams(self, local_provider):
-        """Test that multiple recurring streams are returned."""
+
+class TestRecurringCollapse:
+    """Test collapsing raw items into deduplicated obligation list."""
+
+    def test_collapse_deduplicates_by_stream(self, local_provider):
+        """Test that collapse produces one entry per recurring obligation."""
         today = date.today()
         start = (today - timedelta(days=365)).isoformat()
         end = (today + timedelta(days=365)).isoformat()
@@ -81,13 +65,17 @@ class TestRecurringList:
             start_date=start,
             end_date=end,
         )
+        streams = collapse_to_streams(items)
 
-        # Our seed data has 4 recurring streams, each with 3 months of items
-        stream_ids = {item["stream"]["id"] for item in items}
-        assert len(stream_ids) >= 2, f"Expected multiple streams, got: {stream_ids}"
+        # Seed has 4 recurring obligations
+        assert len(streams) == 4
 
-    def test_recurring_items_sorted_by_date(self, local_provider):
-        """Test that items are sorted by date."""
+        # Each should be unique by stream_id
+        stream_ids = [s["stream_id"] for s in streams]
+        assert len(stream_ids) == len(set(stream_ids))
+
+    def test_collapsed_items_have_expected_fields(self, local_provider):
+        """Test that collapsed items have the right structure."""
         today = date.today()
         start = (today - timedelta(days=365)).isoformat()
         end = (today + timedelta(days=365)).isoformat()
@@ -96,12 +84,19 @@ class TestRecurringList:
             start_date=start,
             end_date=end,
         )
+        streams = collapse_to_streams(items)
 
-        dates = [item["date"] for item in items]
-        assert dates == sorted(dates)
+        for s in streams:
+            assert "stream_id" in s
+            assert "merchant" in s
+            assert "amount" in s
+            assert "frequency" in s
+            assert "category" in s
+            assert "account" in s
+            assert "this_month_paid" in s
 
-    def test_recurring_payment_status(self, local_provider):
-        """Test that items have transactionId (paid) or not."""
+    def test_collapsed_sorted_by_merchant(self, local_provider):
+        """Test that collapsed list is sorted by merchant name."""
         today = date.today()
         start = (today - timedelta(days=365)).isoformat()
         end = (today + timedelta(days=365)).isoformat()
@@ -110,7 +105,29 @@ class TestRecurringList:
             start_date=start,
             end_date=end,
         )
+        streams = collapse_to_streams(items)
 
-        # transactionId should be present as a key (may be None for unpaid)
-        for item in items:
-            assert "transactionId" in item
+        merchants = [s["merchant"].lower() for s in streams]
+        assert merchants == sorted(merchants)
+
+    def test_collapsed_has_known_merchants(self, local_provider):
+        """Test that seed data merchants appear in collapsed list."""
+        today = date.today()
+        start = (today - timedelta(days=365)).isoformat()
+        end = (today + timedelta(days=365)).isoformat()
+
+        items = local_provider.get_recurring_transaction_items(
+            start_date=start,
+            end_date=end,
+        )
+        streams = collapse_to_streams(items)
+
+        merchant_names = {s["merchant"] for s in streams}
+        assert "Netflix" in merchant_names
+        assert "Spotify" in merchant_names
+        assert "Fairview Bank Mortgage" in merchant_names
+        assert "AutoFinance Co" in merchant_names
+
+    def test_collapse_empty_list(self):
+        """Test that collapsing empty list returns empty."""
+        assert collapse_to_streams([]) == []
