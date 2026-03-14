@@ -450,7 +450,7 @@ def _list_recurring(output_format: str) -> str:
     """Implementation of list recurring."""
     provider = get_provider()
 
-    start_date, end_date = recurring._current_month_range()
+    start_date, end_date = recurring._trailing_year_range()
     items = provider.get_recurring_transaction_items(
         start_date=start_date,
         end_date=end_date,

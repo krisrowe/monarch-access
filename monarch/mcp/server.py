@@ -680,11 +680,11 @@ async def delete_transaction_tool(
 async def list_recurring_tool() -> dict[str, Any]:
     """Retrieve the list of recurring obligations from Monarch Money."""
     try:
-        from ..recurring import _current_month_range, collapse_to_streams
+        from ..recurring import _trailing_year_range, collapse_to_streams
 
         client = _get_client()
 
-        start_date, end_date = _current_month_range()
+        start_date, end_date = _trailing_year_range()
         items = await get_recurring_transaction_items(
             client,
             start_date=start_date,

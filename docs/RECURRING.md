@@ -223,9 +223,10 @@ runs `monarch recurring` and gets their stable list of obligations with payment 
 | `account` | Payment account name |
 | `account_id` | Account ID |
 | `is_past` | Whether the due date has passed (Monarch's raw `isPast`) |
-| `due_date` | Expected payment date this month |
+| `due_date` | Expected payment date for the current month (YYYY-MM-DD) |
+| `last_paid_date` | Date of most recent paid occurrence in trailing 12 months (YYYY-MM-DD, null if never paid) |
 | `actual_amount` | Actual or expected amount this month |
-| `transaction_id` | Matched transaction ID (null if unpaid) |
+| `transaction_id` | Matched transaction ID for current month (null if unpaid) |
 
 ### Payment Status
 
@@ -242,6 +243,12 @@ The text display derives a human-readable label (PAID/OVERDUE/UPCOMING) from the
 two fields for convenience, but the MCP tool surfaces the raw data so consumers can
 use or ignore the payment status as they see fit. The primary list value is the
 obligations themselves — the payment status is supplementary enrichment.
+
+Additionally, `last_paid_date` provides the date of the most recent paid occurrence
+across the trailing 12 months. This is independent of the current month — comparing
+`last_paid_date` to `due_date` gives a clear picture of whether a payment is current
+regardless of where you are in the billing cycle. A `last_paid_date` of null means
+no payment was matched in the past year.
 
 ---
 

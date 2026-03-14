@@ -97,6 +97,7 @@ class TestRecurringCollapse:
             assert isinstance(s["is_past"], bool)
             assert "due_date" in s
             assert "transaction_id" in s
+            assert "last_paid_date" in s
 
     def test_collapsed_sorted_by_merchant(self, local_provider):
         """Test that collapsed list is sorted by merchant name."""

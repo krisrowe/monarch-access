@@ -33,21 +33,39 @@ def _current_month_range() -> tuple[str, str]:
     return start, end
 
 
+def _trailing_year_range() -> tuple[str, str]:
+    """Return (start_date, end_date) spanning 12 months back through current month."""
+    today = date.today()
+    start = today.replace(year=today.year - 1, day=1).isoformat()
+    last_day = calendar.monthrange(today.year, today.month)[1]
+    end = today.replace(day=last_day).isoformat()
+    return start, end
+
+
 def collapse_to_streams(items: list[dict]) -> list[dict]:
     """Collapse recurring items into one entry per stream.
 
     Takes the raw recurring transaction items (which are date-specific
     occurrences) and deduplicates by stream ID, producing a stable list
-    of recurring obligations. Monarch's raw fields (isPast, transactionId)
-    are preserved directly for the consumer to interpret.
+    of recurring obligations.
+
+    For each stream, tracks:
+    - Current month's occurrence (due_date, is_past, transaction_id)
+    - Last paid date across all items (last_paid_date)
     """
     streams: dict[str, dict] = {}
 
-    for item in items:
+    # Sort items by date so we process in chronological order
+    sorted_items = sorted(items, key=lambda i: i.get("date", ""))
+
+    for item in sorted_items:
         stream = item.get("stream", {})
         stream_id = stream.get("id")
         if not stream_id:
             continue
+
+        is_paid = item.get("transactionId") is not None
+        item_date = item.get("date", "")
 
         if stream_id not in streams:
             merchant = stream.get("merchant") or {}
@@ -63,16 +81,22 @@ def collapse_to_streams(items: list[dict]) -> list[dict]:
                 "account": (item.get("account") or {}).get("displayName", ""),
                 "account_id": (item.get("account") or {}).get("id", ""),
                 "is_past": item.get("isPast", False),
-                "due_date": item.get("date", ""),
+                "due_date": item_date,
                 "actual_amount": item.get("amount"),
                 "transaction_id": item.get("transactionId"),
+                "last_paid_date": item_date if is_paid else None,
             }
         else:
-            # If we already have this stream, prefer the most recent item
             existing = streams[stream_id]
-            if item.get("date", "") > existing["due_date"]:
+
+            # Track last paid date across all occurrences
+            if is_paid and (existing["last_paid_date"] is None or item_date > existing["last_paid_date"]):
+                existing["last_paid_date"] = item_date
+
+            # Most recent item becomes the current occurrence
+            if item_date > existing["due_date"]:
                 existing["is_past"] = item.get("isPast", False)
-                existing["due_date"] = item.get("date", "")
+                existing["due_date"] = item_date
                 existing["actual_amount"] = item.get("amount")
                 existing["transaction_id"] = item.get("transactionId")
 
@@ -106,7 +130,7 @@ def format_text(streams: list[dict]) -> str:
     lines = []
     lines.append(f"RECURRING ({len(streams)})")
 
-    col_widths = [24, 12, 10, 20, 10]
+    col_widths = [24, 12, 10, 10, 10]
     alignments = ["l", "r", "l", "l", "l"]
 
     def make_table(rows: list[tuple]) -> list[str]:
@@ -127,14 +151,14 @@ def format_text(streams: list[dict]) -> str:
         result.append(separator)
         return result
 
-    rows = [("Merchant", "Amount", "Frequency", "Account", "Status")]
+    rows = [("Merchant", "Amount", "Due Date", "Last Paid", "Status")]
 
     for s in streams:
         rows.append((
             s.get("merchant", "")[:24],
             fmt_money(s.get("amount")),
-            s.get("frequency", "")[:10],
-            s.get("account", "")[:20],
+            s.get("due_date", "")[:10],
+            (s.get("last_paid_date") or "never")[:10],
             _display_status(s),
         ))
 
@@ -158,7 +182,7 @@ def format_csv(streams: list[dict]) -> str:
     output = io.StringIO()
     fieldnames = [
         "merchant", "amount", "frequency", "category", "account",
-        "is_past", "due_date", "transaction_id", "stream_id",
+        "due_date", "last_paid_date", "is_past", "transaction_id", "stream_id",
     ]
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
@@ -170,8 +194,9 @@ def format_csv(streams: list[dict]) -> str:
             "frequency": s.get("frequency", ""),
             "category": s.get("category", ""),
             "account": s.get("account", ""),
-            "is_past": s.get("is_past", False),
             "due_date": s.get("due_date", ""),
+            "last_paid_date": s.get("last_paid_date", ""),
+            "is_past": s.get("is_past", False),
             "transaction_id": s.get("transaction_id", ""),
             "stream_id": s.get("stream_id", ""),
         })
