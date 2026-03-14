@@ -218,14 +218,28 @@ runs `monarch recurring` and gets their stable list of obligations with payment 
 | `amount` | Expected monthly amount |
 | `frequency` | Recurrence frequency |
 | `is_approximate` | Whether amount varies |
-| `category` | Monarch category name |
+| `category` | Monarch category name (inherited from transaction) |
 | `category_id` | Category ID |
 | `account` | Payment account name |
 | `account_id` | Account ID |
-| `this_month_paid` | Whether current month's payment matched a transaction |
-| `this_month_date` | Expected date this month |
-| `this_month_amount` | Actual or expected amount this month |
-| `this_month_transaction_id` | Matched transaction ID (null if unpaid) |
+| `status` | **`paid`**, **`overdue`**, or **`upcoming`** (see below) |
+| `due_date` | Expected payment date this month |
+| `actual_amount` | Actual or expected amount this month |
+| `transaction_id` | Matched transaction ID (null if unpaid) |
+
+### Payment Status Logic
+
+The `status` field is derived from Monarch's `isPast` and `transactionId`:
+
+| `isPast` | `transactionId` | `status` | Meaning |
+|----------|----------------|----------|---------|
+| false | null | **upcoming** | Not due yet this month |
+| true | non-null | **paid** | Payment matched to a transaction |
+| true | null | **overdue** | Due date passed, no matching payment found |
+
+This gives a clear three-state indicator for each obligation. The primary use case
+is quickly identifying **overdue** items — obligations where the due date has passed
+but no matching transaction was detected.
 
 ---
 
@@ -378,6 +392,36 @@ get 3 rows per stream (one per month). The date range determines which projected
 occurrences you see, not which obligations exist. For the stable obligations list,
 the date range is an implementation detail — our CLI/MCP tool handles it internally
 (current month) and doesn't expose it to the user.
+
+### How reliable is the payment status?
+
+The status relies on Monarch's ability to match a transaction to a recurring stream.
+This works well when the merchant name and amount match closely. Potential issues:
+
+- **Variable amounts** (e.g., credit card minimum payments): If the payment amount
+  differs significantly from the expected amount, Monarch may not match it. The
+  `isApproximate` flag on the stream indicates variable amounts.
+- **Late-month due dates**: A bill due the 28th will correctly show "upcoming" on
+  the 5th. This is accurate — it hasn't been paid yet. Once paid, it flips to "paid."
+  The status reflects reality for the current month.
+- **Payment timing across month boundaries**: If you pay a bill on March 30 for an
+  April 1 due date, the March query would show it as "paid" for March. The April
+  query would show April's occurrence as "upcoming" until matched.
+
+The `overdue` status is the most actionable signal — it means the due date has passed
+and no matching transaction was found. This is the clear indicator for "I need to
+check on this."
+
+### What if something silently disappears from the list?
+
+This is the core stability concern. Monarch's recurring list could lose items if:
+- A merchant name changes upstream
+- An account gets disconnected
+- Monarch changes its retention/detection behavior
+
+The **blacklist + snapshot** approach mitigates this: cache the previous list and
+diff against the current one. If a stream disappears that isn't on your blacklist,
+flag it. This hasn't been implemented yet (see Open Questions).
 
 ### How can I filter or categorize streams?
 

@@ -93,7 +93,9 @@ class TestRecurringCollapse:
             assert "frequency" in s
             assert "category" in s
             assert "account" in s
-            assert "this_month_paid" in s
+            assert "status" in s
+            assert s["status"] in ("paid", "overdue", "upcoming")
+            assert "due_date" in s
 
     def test_collapsed_sorted_by_merchant(self, local_provider):
         """Test that collapsed list is sorted by merchant name."""
