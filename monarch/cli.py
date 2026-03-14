@@ -8,7 +8,7 @@ from typing import Optional
 
 import click
 
-from . import accounts, net_worth, transactions
+from . import accounts, net_worth, recurring, transactions
 from .client import AuthenticationError, APIError
 from .providers import get_provider
 
@@ -426,6 +426,52 @@ def _update_transaction(
         return json.dumps(updated, indent=2, default=str)
     else:
         return transactions.format_single_text(updated)
+
+
+@cli.command("recurring")
+@click.option("--format", "output_format", type=click.Choice(["text", "json", "csv"]), default="text", help="Output format")
+@click.option("--start", "start_date", help="Start date, inclusive (YYYY-MM-DD). Defaults to first of current month.")
+@click.option("--end", "end_date", help="End date, inclusive (YYYY-MM-DD). Defaults to last of current month.")
+def list_recurring(output_format: str, start_date: Optional[str], end_date: Optional[str]):
+    """List recurring transaction items (bills, subscriptions, loan payments)."""
+    try:
+        result = _list_recurring(output_format, start_date, end_date)
+        click.echo(result)
+    except AuthenticationError as e:
+        click.echo(f"Authentication error: {e}", err=True)
+        sys.exit(1)
+    except APIError as e:
+        click.echo(f"API error: {e}", err=True)
+        sys.exit(1)
+
+
+def _list_recurring(output_format: str, start_date: Optional[str], end_date: Optional[str]) -> str:
+    """Implementation of list recurring."""
+    from datetime import date
+    import calendar
+
+    provider = get_provider()
+
+    # Default to current month
+    if not start_date:
+        today = date.today()
+        start_date = today.replace(day=1).isoformat()
+    if not end_date:
+        today = date.today()
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        end_date = today.replace(day=last_day).isoformat()
+
+    items = provider.get_recurring_transaction_items(
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    if output_format == "json":
+        return json.dumps(items, indent=2, default=str)
+    elif output_format == "csv":
+        return recurring.format_csv(items)
+    else:
+        return recurring.format_text(items)
 
 
 @cli.command("accounts")

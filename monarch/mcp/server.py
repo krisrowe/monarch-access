@@ -26,6 +26,7 @@ from ..queries import (
     CREATE_TRANSACTION_MUTATION,
     DELETE_TRANSACTION_MUTATION,
     GET_TRANSACTION_QUERY,
+    RECURRING_TRANSACTION_ITEMS_QUERY,
     SPLIT_TRANSACTION_MUTATION,
     TRANSACTION_CATEGORIES_QUERY,
     TRANSACTIONS_QUERY,
@@ -217,6 +218,21 @@ async def split_transaction(
         raise APIError(f"Split failed: {msg}")
 
     return result.get("transaction", {})
+
+
+async def get_recurring_transaction_items(
+    client: MonarchClient,
+    start_date: str,
+    end_date: str,
+) -> list[dict]:
+    """Get recurring transaction items for a date range."""
+    variables: dict[str, Any] = {
+        "startDate": start_date,
+        "endDate": end_date,
+    }
+
+    data = await client._request(RECURRING_TRANSACTION_ITEMS_QUERY, variables)
+    return data.get("recurringTransactionItems", [])
 
 
 async def create_transaction(
@@ -655,6 +671,55 @@ async def delete_transaction_tool(
     except Exception as e:
         logger.error(f"Error deleting transaction: {e}")
         return {"error": str(e), "deleted": False, "success": False}
+
+
+@mcp.tool(
+    name="list_recurring",
+    description="List recurring transaction items (bills, subscriptions, loan payments, credit card payments) from Monarch Money. Returns items for a date range showing merchant, expected amount, frequency, payment status (paid/upcoming/overdue), and linked account. Defaults to the current month if no dates specified.",
+)
+async def list_recurring_tool(
+    start_date: Optional[str] = Field(
+        default=None,
+        description="Start date (YYYY-MM-DD). Defaults to first of current month.",
+    ),
+    end_date: Optional[str] = Field(
+        default=None,
+        description="End date (YYYY-MM-DD). Defaults to last of current month.",
+    ),
+) -> dict[str, Any]:
+    """Retrieve recurring transaction items from Monarch Money."""
+    try:
+        from datetime import date
+        import calendar
+
+        client = _get_client()
+
+        # Default to current month
+        if not start_date:
+            today = date.today()
+            start_date = today.replace(day=1).isoformat()
+        if not end_date:
+            today = date.today()
+            last_day = calendar.monthrange(today.year, today.month)[1]
+            end_date = today.replace(day=last_day).isoformat()
+
+        items = await get_recurring_transaction_items(
+            client,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        return {
+            "recurring_items": items,
+            "count": len(items),
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+    except AuthenticationError as e:
+        return {"error": str(e), "recurring_items": [], "count": 0}
+    except Exception as e:
+        logger.error(f"Error listing recurring items: {e}")
+        return {"error": str(e), "recurring_items": [], "count": 0}
 
 
 # =============================================================================
