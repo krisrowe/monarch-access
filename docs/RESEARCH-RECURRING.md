@@ -214,58 +214,132 @@ a monthly obligations register.** It meets the core requirements:
 
 ### Recommended Architecture for MCP Server
 
+#### Source of Truth: Local Config File (NOT Monarch)
+
+After further analysis, **Monarch's recurring feature should NOT be the source of truth**
+for the obligations register. Reasons:
+
+- Monarch may auto-detect and surface recurring items the user hasn't approved
+- Merchant names can change upstream, potentially orphaning or merging streams
+- Account disconnections could affect linked recurring items
+- No guarantee a third-party app won't change its pruning/retention behavior
+- User needs the ability to ignore Monarch noise (auto-detected items, certain
+  categories/types) without filtering logic — just by never adding them to the list
+
+**The canonical list is a user-maintained config file** (YAML or JSON) under version
+control. Monarch is used purely as a data enrichment layer.
+
 ```
-┌─────────────────────────────────────────────────┐
-│              MCP Server Tools                    │
-├─────────────────────────────────────────────────┤
-│                                                  │
-│  list_monthly_obligations                        │
-│    → Query: GetRecurringStreams                   │
-│    → Returns: All recurring streams as the       │
-│      canonical list of obligations               │
-│                                                  │
-│  get_obligation_status (per obligation)           │
-│    → Query: GetUpcomingRecurringTransactionItems  │
-│    → Cross-ref: Account balances, transactions   │
-│    → Returns: Payment status, last paid date,    │
-│      current balance, projected payoff           │
-│                                                  │
-│  get_obligations_summary                         │
-│    → Aggregates all obligations with status       │
-│    → Monthly total, paid/unpaid breakdown        │
-│                                                  │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                  Source of Truth                       │
+│          obligations.yaml (local config)              │
+│   - User explicitly adds/removes entries              │
+│   - Version controlled                                │
+│   - Nothing falls off without a deliberate edit       │
+│   - Anything not in this file is ignored              │
+└──────────────┬───────────────────────────────────────┘
+               │ read
+               ▼
+┌──────────────────────────────────────────────────────┐
+│              MCP Server Tools                         │
+├──────────────────────────────────────────────────────┤
+│                                                       │
+│  list_monthly_obligations                             │
+│    → Reads: obligations.yaml                          │
+│    → Returns: The user's canonical obligation list    │
+│                                                       │
+│  get_obligation_status (per obligation)                │
+│    → Reads: obligations.yaml for the obligation       │
+│    → Enriches via Monarch API:                        │
+│      - Recurring streams (payment matching)           │
+│      - Account balances (loans, credit cards)         │
+│      - Transaction history (last paid date)           │
+│      - Bill Sync data (due dates)                     │
+│    → Returns: Payment status, last paid date,         │
+│      current balance, projected payoff                │
+│                                                       │
+│  get_obligations_summary                              │
+│    → Reads: obligations.yaml                          │
+│    → Enriches all obligations in bulk                 │
+│    → Returns: Monthly total, paid/unpaid breakdown    │
+│                                                       │
+└──────────────────────────────────────────────────────┘
 ```
 
-### Queries to Implement
+#### Example `obligations.yaml`
 
-1. **`Common_GetRecurringStreams`** - The master list of all recurring obligations
-   (independent of date range). This is the "register."
+```yaml
+obligations:
+  - name: Mortgage
+    amount: 2150.00
+    frequency: monthly
+    monarch_merchant: "ABC Mortgage Co"
+    type: loan
+    notes: "30-year fixed, 6.5%"
 
-2. **`Web_GetUpcomingRecurringTransactionItems`** - For a given month, shows which
-   obligations are upcoming vs. completed, with matched transactions.
+  - name: Netflix
+    amount: 15.49
+    frequency: monthly
+    monarch_merchant: "Netflix"
+    type: subscription
 
-3. **`GetBills`** - For liability accounts with Bill Sync, provides due dates and
-   balance information.
+  - name: Chase Sapphire
+    amount: null  # varies — minimum payment
+    frequency: monthly
+    monarch_merchant: "Chase Credit Card"
+    type: credit_card
 
-4. **Existing queries** (accounts, transactions) - For cross-referencing:
-   - Account balances for credit cards and loans
-   - Transaction history for "last paid" lookups
-   - Category data for obligation classification
+  - name: Car Insurance
+    amount: 185.00
+    frequency: monthly
+    monarch_merchant: "GEICO"
+    type: insurance
+
+  - name: Student Loan - Federal
+    amount: 350.00
+    frequency: monthly
+    monarch_merchant: "MOHELA"
+    type: loan
+    notes: "SAVE plan"
+```
+
+Key design points:
+- `monarch_merchant` maps to Monarch's merchant name for enrichment lookups
+- If the merchant isn't found in Monarch, the obligation still shows up — just
+  without enrichment data. The list is never filtered by what Monarch knows about.
+- `type` is user-defined and can be used for grouping/filtering in MCP tool output
+- Items only leave this file when the user deletes them
+
+### Monarch API Queries for Enrichment
+
+1. **`Web_GetUpcomingRecurringTransactionItems`** - Match by merchant name to
+   determine if current month's payment is done, upcoming, or overdue.
+
+2. **`GetBills`** - For liability accounts with Bill Sync, provides due dates and
+   balance information from creditors.
+
+3. **Existing queries** (already implemented in this project):
+   - `GetAccounts` - Current balances for credit cards and loan accounts
+   - `GetTransactionsList` - Transaction history filtered by merchant for
+     "last paid" lookups
+   - `GetTransactionCategories` - Category context if needed
 
 ### Workflow
 
-1. **User maintains their obligations in Monarch UI** - Adds all monthly commitments
-   as recurring items (subscriptions, loan payments, credit card payments).
+1. **User maintains `obligations.yaml`** — Adds all monthly commitments manually.
+   This is a deliberate, version-controlled act. Nothing auto-added, nothing
+   auto-removed.
 
-2. **MCP server reads the recurring streams** - Treats this as the canonical, user-
-   controlled register of monthly obligations.
+2. **MCP server reads `obligations.yaml`** as the canonical register. Anything
+   not in this file does not exist as far as the tools are concerned. Monarch's
+   auto-detected recurring items, noise, and categorization are irrelevant.
 
-3. **MCP server enriches with cross-referenced data** - For each obligation, queries
-   accounts, transactions, and bills to provide:
-   - When it was last paid
+3. **MCP server enriches via Monarch API** — For each obligation, queries Monarch
+   to provide:
+   - Whether current month's payment is complete (via recurring item matching)
+   - When it was last paid (via transaction history)
    - Current account balance (for loans/credit cards)
-   - Whether current month's payment is complete
+   - Due date (via Bill Sync if available)
    - Projected payoff (calculated from balance and payment amount)
 
 ---
