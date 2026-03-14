@@ -222,24 +222,26 @@ runs `monarch recurring` and gets their stable list of obligations with payment 
 | `category_id` | Category ID |
 | `account` | Payment account name |
 | `account_id` | Account ID |
-| `status` | **`paid`**, **`overdue`**, or **`upcoming`** (see below) |
+| `is_past` | Whether the due date has passed (Monarch's raw `isPast`) |
 | `due_date` | Expected payment date this month |
 | `actual_amount` | Actual or expected amount this month |
 | `transaction_id` | Matched transaction ID (null if unpaid) |
 
-### Payment Status Logic
+### Payment Status
 
-The `status` field is derived from Monarch's `isPast` and `transactionId`:
+The MCP tool and JSON output return Monarch's raw fields (`is_past`, `transaction_id`)
+directly. No derived status field — the consumer interprets them:
 
-| `isPast` | `transactionId` | `status` | Meaning |
-|----------|----------------|----------|---------|
-| false | null | **upcoming** | Not due yet this month |
-| true | non-null | **paid** | Payment matched to a transaction |
-| true | null | **overdue** | Due date passed, no matching payment found |
+| `is_past` | `transaction_id` | Meaning |
+|-----------|-----------------|---------|
+| false | null | Not due yet this month |
+| true | non-null | Paid — payment matched to a transaction |
+| true | null | Due date passed, no matching payment found |
 
-This gives a clear three-state indicator for each obligation. The primary use case
-is quickly identifying **overdue** items — obligations where the due date has passed
-but no matching transaction was detected.
+The text display derives a human-readable label (PAID/OVERDUE/UPCOMING) from these
+two fields for convenience, but the MCP tool surfaces the raw data so consumers can
+use or ignore the payment status as they see fit. The primary list value is the
+obligations themselves — the payment status is supplementary enrichment.
 
 ---
 

@@ -33,29 +33,13 @@ def _current_month_range() -> tuple[str, str]:
     return start, end
 
 
-def _derive_status(is_past: bool, transaction_id) -> str:
-    """Derive a clear payment status from Monarch's isPast and transactionId.
-
-    Returns one of:
-        'paid'     - payment matched to a transaction
-        'overdue'  - expected date has passed with no matching transaction
-        'upcoming' - not yet due
-    """
-    if transaction_id is not None:
-        return "paid"
-    elif is_past:
-        return "overdue"
-    else:
-        return "upcoming"
-
-
 def collapse_to_streams(items: list[dict]) -> list[dict]:
     """Collapse recurring items into one entry per stream.
 
     Takes the raw recurring transaction items (which are date-specific
     occurrences) and deduplicates by stream ID, producing a stable list
-    of recurring obligations. Each entry includes a clear payment status:
-    'paid', 'overdue', or 'upcoming'.
+    of recurring obligations. Monarch's raw fields (isPast, transactionId)
+    are preserved directly for the consumer to interpret.
     """
     streams: dict[str, dict] = {}
 
@@ -64,10 +48,6 @@ def collapse_to_streams(items: list[dict]) -> list[dict]:
         stream_id = stream.get("id")
         if not stream_id:
             continue
-
-        is_past = item.get("isPast", False)
-        transaction_id = item.get("transactionId")
-        status = _derive_status(is_past, transaction_id)
 
         if stream_id not in streams:
             merchant = stream.get("merchant") or {}
@@ -82,22 +62,32 @@ def collapse_to_streams(items: list[dict]) -> list[dict]:
                 "category_id": (item.get("category") or {}).get("id", ""),
                 "account": (item.get("account") or {}).get("displayName", ""),
                 "account_id": (item.get("account") or {}).get("id", ""),
-                "status": status,
+                "is_past": item.get("isPast", False),
                 "due_date": item.get("date", ""),
                 "actual_amount": item.get("amount"),
-                "transaction_id": transaction_id,
+                "transaction_id": item.get("transactionId"),
             }
         else:
             # If we already have this stream, prefer the most recent item
             existing = streams[stream_id]
             if item.get("date", "") > existing["due_date"]:
-                existing["status"] = status
+                existing["is_past"] = item.get("isPast", False)
                 existing["due_date"] = item.get("date", "")
                 existing["actual_amount"] = item.get("amount")
-                existing["transaction_id"] = transaction_id
+                existing["transaction_id"] = item.get("transactionId")
 
     # Sort by merchant name for stable output
     return sorted(streams.values(), key=lambda s: s.get("merchant", "").lower())
+
+
+def _display_status(s: dict) -> str:
+    """Human-readable status for text/CSV display."""
+    if s.get("transaction_id") is not None:
+        return "PAID"
+    elif s.get("is_past"):
+        return "OVERDUE"
+    else:
+        return "UPCOMING"
 
 
 def format_text(streams: list[dict]) -> str:
@@ -116,7 +106,7 @@ def format_text(streams: list[dict]) -> str:
     lines = []
     lines.append(f"RECURRING ({len(streams)})")
 
-    col_widths = [24, 12, 10, 20, 8]
+    col_widths = [24, 12, 10, 20, 10]
     alignments = ["l", "r", "l", "l", "l"]
 
     def make_table(rows: list[tuple]) -> list[str]:
@@ -137,29 +127,25 @@ def format_text(streams: list[dict]) -> str:
         result.append(separator)
         return result
 
-    col_widths = [24, 12, 10, 20, 10]
-
     rows = [("Merchant", "Amount", "Frequency", "Account", "Status")]
 
     for s in streams:
-        status = s.get("status", "").upper()
         rows.append((
             s.get("merchant", "")[:24],
             fmt_money(s.get("amount")),
             s.get("frequency", "")[:10],
             s.get("account", "")[:20],
-            status[:10],
+            _display_status(s),
         ))
 
     lines.extend(make_table(rows))
 
     total = sum(float(s.get("amount") or 0) for s in streams)
-    paid = sum(1 for s in streams if s.get("status") == "paid")
-    overdue = sum(1 for s in streams if s.get("status") == "overdue")
-    upcoming = sum(1 for s in streams if s.get("status") == "upcoming")
+    paid = sum(1 for s in streams if s.get("transaction_id") is not None)
+    overdue = sum(1 for s in streams if s.get("is_past") and s.get("transaction_id") is None)
+    upcoming = sum(1 for s in streams if not s.get("is_past") and s.get("transaction_id") is None)
     lines.append("")
-    summary = f"Monthly total: {fmt_money(total)}  |  Paid: {paid}  Overdue: {overdue}  Upcoming: {upcoming}"
-    lines.append(summary)
+    lines.append(f"Monthly total: {fmt_money(total)}  |  Paid: {paid}  Overdue: {overdue}  Upcoming: {upcoming}")
 
     return "\n".join(lines)
 
@@ -172,7 +158,7 @@ def format_csv(streams: list[dict]) -> str:
     output = io.StringIO()
     fieldnames = [
         "merchant", "amount", "frequency", "category", "account",
-        "status", "due_date", "stream_id",
+        "is_past", "due_date", "transaction_id", "stream_id",
     ]
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
@@ -184,8 +170,9 @@ def format_csv(streams: list[dict]) -> str:
             "frequency": s.get("frequency", ""),
             "category": s.get("category", ""),
             "account": s.get("account", ""),
-            "status": s.get("status", ""),
+            "is_past": s.get("is_past", False),
             "due_date": s.get("due_date", ""),
+            "transaction_id": s.get("transaction_id", ""),
             "stream_id": s.get("stream_id", ""),
         })
 
