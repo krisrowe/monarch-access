@@ -95,46 +95,57 @@ stream ID to produce the stable obligations list.
 
 ## What We Know vs. What We're Assuming
 
-### Confirmed (from documentation or source code inspection)
+### Confirmed (from live API data, March 2026)
 
 - Recurring items persist until explicitly removed by user
 - Auto-detected items require user review/approval before appearing on confirmed list
 - Items are transaction-seeded — cannot create from thin air without a transaction
-- Each merchant can only have one recurring stream
-- Categories are system-defined, not customizable
-- CC payments land as "Transfer" category (same as any inter-account movement)
-- The category on a recurring stream is inherited from the transaction — no separate
-  stream category exists
+- **A merchant CAN have multiple streams** — live data shows Audible x3 (stream IDs
+  `...6789`, `...2094`, `...5138`), Executive Lawn Care x3 (different merchant name
+  variants), Prime Video x2, RoundPoint Mortgage x2, Redrivervalley* x3. This happens
+  when Monarch detects separate recurring patterns for the same merchant (different
+  amounts, slightly different merchant name strings, etc.)
+- **Categories ARE customizable** — live data contains user-created categories like
+  "Gigi Aftercare", "Clement Supplies", "Buffalo Interest", "Kachina Utilities",
+  "Child Transportation", "Conley Investment", "Clement Management", etc. The Monarch
+  UI allows creating custom categories (likely via subcategory creation under system
+  groups). Previous claim that categories are system-defined was **wrong**.
+- **CC payments use "Credit Card Payment" category**, not generic "Transfer" — live
+  data shows Best Buy and Automatic Payment both categorized as "Credit Card Payment".
+  Other obligation types use specific categories: "Mortgage", "Loan Repayment",
+  "Child Support", etc. The concern about CC payments being indistinguishable from
+  transfers was overstated.
+- The category on a recurring stream is inherited from the transaction — recategorizing
+  the transaction updates the stream's category
+- **`isPast` is relative to today's date** — confirmed from live data queried on
+  March 14, 2026: items with `due_date` on or before 2026-03-14 have `isPast: true`,
+  items with `due_date` after 2026-03-14 have `isPast: false`. It is a dynamic field.
+- **`transactionId` null = unpaid, non-null = paid** — confirmed from clear pattern
+  in live data. All items with future due dates have `transactionId: null`. Items with
+  past due dates and known payments have non-null IDs.
+- **Stream `amount` is the expected amount; item `amount` is per-occurrence** — these
+  can diverge significantly (see Data Quality section below)
+- **Fields can be empty** — "Online Payment to Txsdu" entries have empty `category`,
+  `category_id`, `account`, and `account_id` strings
+- Frequency values confirmed: `weekly`, `biweekly`, `monthly`, `quarterly`, `yearly`
 - The `monarchmoney` Python library has `get_recurring_transactions()` (read-only)
 - No create/update/delete mutations for recurring items found in any community library
 - The GraphQL query accepts `$filters: RecurringTransactionFilter` (schema unknown)
 - Tags exist on transactions; unknown if they exist on recurring streams
 
-### Assumptions (NOT verified against live API)
+### Still Unverified
 
-- **`isPast` meaning**: We assume this means "the due date has passed relative to
-  today's date." It could mean something else (e.g., relative to the query date
-  range, or a fixed property set at item creation).
+- **Date range behavior details**: We query a trailing 12 months and get items. We
+  don't know exactly how mid-month ranges behave, or how many items per stream per
+  period are returned for non-monthly frequencies.
 
-- **`transactionId` meaning**: We assume null means "no payment matched" and non-null
-  means "paid." Could have other semantics (e.g., partially paid states).
+- **`amountDiff` behavior**: We include this field in the query but haven't examined
+  its values in live data.
 
-- **Date range behavior**: We assume querying Jan 1 – Dec 31 returns one item per
-  stream per month. We do NOT know:
-  - What happens with mid-month ranges (e.g., Jan 15 – Feb 15)
-  - Whether items outside the range but related are included
-  - How the range interacts with `isPast`
-  - Whether the API returns items for months where no payment was expected
+- **`RecurringTransactionFilter` schema**: Unknown what fields it accepts.
 
-- **`last_paid_date` derivation**: Our code derives this by finding the most recent
-  item with a non-null `transactionId` across the queried range. This assumes
-  `transactionId` reliably indicates payment. Untested.
-
-- **Stream deduplication**: We assume that querying multiple months returns the same
-  `stream.id` for the same obligation across months. Untested.
-
-- **`amountDiff` behavior**: We include this field but don't know how Monarch
-  calculates it or when it's populated.
+- **`Common_GetRecurringStreams` schema**: May have useful fields like `lastPaidDate`
+  that would eliminate our need to derive it.
 
 ---
 
@@ -151,23 +162,26 @@ activity.
 
 ---
 
-## Category Limitations
+## Categories
 
-Monarch categories are **system-defined and not customizable**. You cannot create
-custom categories like "Monthly Obligations" or "Critical Bills."
+~~Monarch categories are system-defined and not customizable.~~ **Corrected**: Live
+data confirms custom categories exist. The user's account contains categories like
+"Gigi Aftercare", "Clement Supplies", "Buffalo Interest", "Kachina Utilities",
+"Child Transportation", "Conley Investment", "Clement Management", "Buffalo Taxes",
+"Entertainment Streaming", "Cloud Services", "Photo and Data Storage", etc. These
+appear to be user-created subcategories under system-defined groups.
 
-This creates a specific problem for credit card payments: they're categorized as
-**"Transfer"** — the same category used for moving money between accounts, paying
-yourself back, etc. There's no way to distinguish "credit card payment (obligation)"
-from "savings transfer (not an obligation)" by category alone.
+Credit card payments use the specific **"Credit Card Payment"** category, not generic
+"Transfer". Other obligation-specific categories include "Mortgage", "Loan Repayment",
+"Child Support", "Auto Insurance", "Home Insurance", etc. The original concern about
+CC payments being indistinguishable from transfers was **incorrect**.
 
 The category on a recurring stream is **inherited from the seeding transaction**.
 There is no independent "stream category" — it's the same value. Recategorizing the
 source transaction would change the stream's category.
 
 Monarch does support **tags** (user-created, freeform) on transactions. Whether tags
-are available on recurring streams is unconfirmed and would need to be verified in the
-web app.
+are available on recurring streams is unconfirmed.
 
 ### Available Filter/Grouping Dimensions
 
@@ -175,11 +189,11 @@ Data available on each recurring item that could be used for client-side filteri
 
 | Field | Example Values | Useful For |
 |-------|---------------|------------|
-| Category | Mortgage, Entertainment, Transfer | Grouping by type (imprecise for CC payments) |
-| Account | Checking, Credit Card, Loan | Grouping by payment source |
-| Frequency | monthly, weekly, biweekly | Filtering to just monthly |
-| Merchant | Netflix, Chase, MOHELA | Matching specific obligations |
-| Amount | -15.49, -2500.00 | Sorting by size |
+| Category | Mortgage, Credit Card Payment, Child Support, Kachina Utilities | Grouping by type — more specific than expected |
+| Account | TOTAL CHECKING (...6773), Kachina (...8944), Conley Checking (...2679) | Grouping by payment source / property |
+| Frequency | weekly, biweekly, monthly, quarterly, yearly | Filtering by recurrence |
+| Merchant | RoundPoint Mortgage, T-Mobile, Starlink | Matching specific obligations |
+| Amount | -1431.46 (mortgage), -0.03 (Google Cloud) | Sorting by size |
 | isApproximate | true/false | Fixed vs. variable amounts |
 
 The API accepts a `$filters: RecurringTransactionFilter` parameter, but the schema
@@ -317,6 +331,95 @@ whether a payment is current — but this relies on our assumptions about what
 
 ---
 
+## Data Quality Findings (Live API, March 14 2026)
+
+Analysis of the 76 collapsed stream entries returned by `list_recurring`.
+
+### Stream Amount vs. Actual Amount Drift
+
+The stream's `amount` (expected) often diverges significantly from `actual_amount`
+(the most recent occurrence). Examples:
+
+| Merchant | Stream Amount | Actual Amount | Notes |
+|----------|--------------|---------------|-------|
+| Amazon | -$1.00 | -$18.39 | Stream amount is meaninglessly low |
+| Google | -$10.81 | +$1,675.00 | **Wrong sign** — stream says expense, actual is income |
+| Automatic Payment | +$127.83 | +$1,445.37 | 11x larger than expected |
+| Interest Paid | +$0.82 | +$14.74 | 18x larger |
+| LegalZoom | -$35.92 | -$299.00 | 8x larger (annual charge?) |
+| Internet Transfer | -$41.31 | +$300.00 | **Wrong sign** |
+
+The `amount` field on the stream is Monarch's historical average or initial estimate.
+It should NOT be used for budgeting or "total monthly obligations" calculations without
+understanding this drift. The `actual_amount` is more accurate for recent periods but
+is only one occurrence.
+
+### Duplicate Streams per Merchant
+
+Multiple merchants have 2-3 separate streams, often because Monarch detected different
+recurring patterns or the raw merchant name string varies slightly:
+
+| Merchant | Stream Count | Merchant Name Variants |
+|----------|-------------|----------------------|
+| Audible | 3 | All "Audible" — different amounts ($16.18 x2, $14.10 x1) |
+| Executive Lawn Care | 3 | "Executive Lawn Care", "Executive Lawn Care S Stonebridge Mc", "Executive Lawn Mc" |
+| Lake Texoma | 2 | "Lake Texoma Trash Waterbury Stowe", "Lake Texoma Waterbury" |
+| Online Payment to Txsdu | 2 | Same name, different amounts ($1,057.48 and $881.24) |
+| Prime Video | 2 | Same name, same amount — likely genuine duplicate streams |
+| Redrivervalley* | 3 | "Redrivervalleyr", "Redrivervalleyrea", "Redrivervalleyrea Memorial" |
+| RoundPoint Mortgage | 2 | Same name, same amount — consecutive months |
+| Farmers Insurance | 2 | Same name, different amounts ($228.95 and $320.17) |
+
+This means summing all stream amounts would **double-count** some obligations. The
+`collapse_to_streams()` function correctly deduplicates by `stream_id`, but it does
+NOT merge streams that represent the same real-world obligation under different IDs.
+
+### Stale Streams
+
+Some streams haven't had a payment in months, suggesting they're no longer active but
+haven't been removed from Monarch's recurring list:
+
+| Merchant | Last Paid | Due Date | Gap |
+|----------|-----------|----------|-----|
+| Ethan | 2025-05-01 | 2025-05-01 | 10+ months |
+| Monthly Payment (Clement Mortgage) | 2025-07-01 | 2025-07-01 | 8+ months |
+| Google Clo Privacycom | 2025-07-29 | 2025-07-29 | 7+ months |
+| OpenAI | 2025-07-06 | 2025-07-06 | 8+ months |
+| Payroll | 2025-10-09 | 2025-10-09 | 5+ months |
+| TJ Maxx | 2025-11-08 | 2025-11-08 | 4+ months |
+| Guesty Inc | 2025-10-06 | 2025-10-06 | 5+ months |
+| Dillard's | 2025-09-01 | 2025-09-01 | 6+ months |
+| Fandango | 2025-04-04 | 2025-04-04 | 11+ months |
+| Urban Air Frisco | 2025-03-21 | 2026-03-28 | ~12 months since last paid |
+| Sport Clips | 2025-08-13 | 2026-03-30 | 7+ months since last paid |
+
+These inflate the total count and monthly sum. A "stale" detection (e.g., last paid
+> 3 months ago for a monthly stream) would be valuable.
+
+### Empty/Missing Fields
+
+Two "Online Payment to Txsdu" entries have empty `category`, `category_id`, `account`,
+and `account_id` fields. Code consuming this data needs to handle empty strings.
+
+### Positive Amounts (Income/Credits)
+
+Several streams represent incoming money, not outgoing obligations:
+
+| Merchant | Amount | Category |
+|----------|--------|----------|
+| Ally Bank | +$192.31 | Same Bank Transfer to Self |
+| Automatic Payment | +$127.83 | Credit Card Payment |
+| Stacy Rowe | +$49.00 | Child Support |
+| Interest Paid | +$0.82 | Interest |
+| Monthly Payment | +$657.70 | Mortgage |
+| Payment | +$95.88 | Loan Payment Credited |
+| Payroll | +$1,675.00 | Base Salary Net Pay |
+
+These are not "obligations" in the bills/subscriptions sense. A filter for expenses
+only (`amount < 0`) or a blacklist would clean these up.
+
+---
+
 ## Architecture Considerations for Obligations Tracking
 
 ### The Core Problem
@@ -362,45 +465,77 @@ falls off the list without an explicit edit to the file.
 
 ---
 
-## Things We Need to Test Against the Live API
+## Answered Questions (from Live API Data, March 14 2026)
 
-These are questions that can only be answered by making actual API calls with real
-data. None of this has been tested.
+Questions previously listed as "need to test" — now answered.
 
-1. **What does `isPast` actually mean?** Is it relative to today? To the query
-   range? Is it a fixed property set when the item is created? Test by querying
-   the same date range at different times and observing if `isPast` changes.
+### 1. What does `isPast` actually mean?
 
-2. **What does `transactionId` being null vs non-null mean?** Does non-null always
-   mean "paid"? Can it be set for partial payments? Test by looking at items where
-   you know the payment status.
+**Confirmed: relative to today's date.** On March 14, items with `due_date` on or
+before 2026-03-14 have `isPast: true`. Items with `due_date` after 2026-03-14 have
+`isPast: false`. Examples:
+- Child Support, due 2026-03-03 → `isPast: true`
+- CarMax, due 2026-03-15 → `isPast: false`
+- Google Drive, due 2026-03-15 → `isPast: false`
+- Best Buy, due 2026-03-13 → `isPast: true`
 
-3. **How does the date range work?** What happens with:
-   - A full calendar month (Jan 1 – Jan 31)
-   - A mid-month range (Jan 15 – Feb 15)
-   - A multi-month range (Jan 1 – Jun 30)
-   - A single day
-   Do you get one item per stream per month? Or per occurrence within the range?
+### 2. What does `transactionId` null vs non-null mean?
 
-4. **Is `stream.id` stable across months?** If I query January and March separately,
-   does Netflix have the same `stream.id` both times?
+**Confirmed: null = unpaid, non-null = paid.** Clear pattern across all 76 items.
+Every item with a future `due_date` has `transactionId: null`. Items with past dates
+and known payments have non-null transaction IDs.
 
-5. **Does the API return items for months where no payment was expected?** If a
-   stream is weekly, does querying one month return ~4 items?
+### 3. Can you detect overdue from a previous month?
 
-6. **What does `amountDiff` contain?** When is it non-zero?
+**Yes.** The trailing-12-month query returns items across months. If something was
+due last month and wasn't paid, it appears with `is_past: true` and
+`transaction_id: null`. The `due_date` tells you exactly when it was due.
 
-7. **What does `RecurringTransactionFilter` accept?** Capture from DevTools when
-   using filter/sort options on the Monarch Recurring page.
+More importantly, comparing `last_paid_date` to `due_date` reveals gaps. Examples
+from live data:
+- **Urban Air Frisco**: due 2026-03-28, last paid 2025-03-21 — ~12 month gap
+- **Sport Clips**: due 2026-03-30, last paid 2025-08-13 — 7 month gap
+- **Lake Texoma Trash**: due 2026-03-21, last paid 2025-04-22 — 11 month gap
+- **Trash Billing**: due 2026-03-23, last paid 2025-11-22 — 4 month gap
 
-8. **What does `Common_GetRecurringStreams` return?** Does it have fields like
-   `lastPaidDate` that would eliminate our need to derive it?
+These are either genuinely overdue or stale streams that should be removed. Either
+way, the data is there to detect them.
 
-9. **Are tags available on recurring streams?** Check via DevTools or by adding
-   a tag to a recurring item in the UI.
+### 4. Is `stream.id` stable across months?
 
-10. **What mutation fires when adding a recurring merchant?** Capture from DevTools
-    when adding one through the UI.
+**Confirmed by implication.** Our `collapse_to_streams()` queries 12 months of items
+and deduplicates by `stream.id`. The fact that we get 76 collapsed streams (not
+hundreds) confirms that the same `stream.id` appears across months for the same
+obligation. If IDs changed monthly, collapsing wouldn't work.
+
+### 5. Does the API return items for non-monthly frequencies?
+
+**Yes.** Weekly streams (AlphaBest, Mens T Clinic) and biweekly streams (Ally Bank,
+Best Buy, Executive Lawn Care, etc.) appear in the data. The trailing-12-month query
+returns items for each expected occurrence within the range. For weekly streams
+queried over 12 months, that could be ~52 items per stream before collapsing.
+
+### 6. Do you get `last_paid_date`?
+
+**Yes — derived, and it works.** Our code finds the most recent item with a non-null
+`transactionId` across the 12-month range. Live examples:
+- **Life360**: due 2026-03-24 (upcoming), last paid 2026-02-22 — current
+- **LightStream**: due 2026-03-15, last paid null — never paid in trailing 12 months
+- **Starlink**: due 2026-03-10, last paid 2026-03-10 — paid this month
+- **Urban Air Frisco**: due 2026-03-28, last paid 2025-03-21 — 12 month gap
+
+The `last_paid_date` is not a native Monarch field — our trailing-year query + collapse
+logic derives it reliably.
+
+### Still Unanswered
+
+These remain untested:
+
+1. **`amountDiff` behavior** — we include it in the query but haven't examined values
+2. **`RecurringTransactionFilter` schema** — what fields does it accept?
+3. **`Common_GetRecurringStreams` return shape** — may have native `lastPaidDate`
+4. **Tags on recurring streams** — unconfirmed
+5. **Create recurring mutation** — needs DevTools capture
 
 ---
 
@@ -447,10 +582,10 @@ collapses items back to streams so the user sees the stable obligations list.
 
 ### What would a credit card payment be in the category field?
 
-Most likely **"Transfer"** — the same category Monarch uses for any money movement
-between accounts. This is problematic because it makes CC payments (obligations)
-indistinguishable from savings transfers or reimbursements (not obligations) by
-category alone.
+**"Credit Card Payment"** — confirmed from live data. Best Buy and Automatic Payment
+both use this category. ~~Previously assumed to be "Transfer"~~ — that was incorrect.
+Other obligation types also use specific categories: "Mortgage", "Loan Repayment",
+"Child Support", "Auto Insurance", "Home Insurance", etc.
 
 ### Is the category on a recurring stream separate from the transaction category?
 
@@ -461,9 +596,12 @@ source transaction is categorized as "Transfer", the stream's category will be
 
 ### Can I create custom categories?
 
-**No.** Monarch categories are system-defined. You cannot add custom categories like
-"Monthly Obligations" or "Critical Bills." Tags (user-created, freeform) exist on
-transactions, but it's unconfirmed whether they're available on recurring streams.
+**Yes.** ~~Previously stated categories are system-defined only~~ — live data proves
+this wrong. The account contains many user-created categories: "Gigi Aftercare",
+"Clement Supplies", "Buffalo Interest", "Kachina Utilities", "Child Transportation",
+"Conley Investment", "Entertainment Streaming", "Cloud Services", "Photo and Data
+Storage", "Recurring Wellness", etc. Monarch supports custom subcategories under
+system-defined parent groups.
 
 ### What are the date range parameters for?
 
