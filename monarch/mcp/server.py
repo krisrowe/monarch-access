@@ -704,6 +704,33 @@ async def list_recurring_tool() -> dict[str, Any]:
         return {"error": str(e), "recurring": [], "count": 0}
 
 
+@mcp.tool(
+    name="mark_as_not_recurring",
+    description="""Mark a recurring stream as not recurring, removing it from the recurring list.
+
+Use when a recurring stream is stale, closed, or was incorrectly detected by Monarch.
+Requires the stream_id from list_recurring output.
+
+This is a permanent action — the stream will no longer appear in list_recurring results.
+If the underlying transactions continue, Monarch may re-detect it as a new stream.""",
+)
+async def mark_as_not_recurring_tool(
+    stream_id: str = Field(description="The stream_id from list_recurring to mark as not recurring"),
+) -> dict[str, Any]:
+    """Mark a recurring stream as not recurring."""
+    try:
+        from ..recurring import mark_as_not_recurring
+
+        client = _get_client()
+        result = await mark_as_not_recurring(client, stream_id)
+        return {"success": True, "result": result}
+    except AuthenticationError as e:
+        return {"error": str(e), "success": False}
+    except Exception as e:
+        logger.error(f"Error marking stream as not recurring: {e}")
+        return {"error": str(e), "success": False}
+
+
 # =============================================================================
 # Server entry points
 # =============================================================================

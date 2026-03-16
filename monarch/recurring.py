@@ -6,7 +6,23 @@ import io
 from datetime import date
 from typing import Any, Optional
 
-from .queries import RECURRING_TRANSACTION_ITEMS_QUERY
+from .queries import MARK_AS_NOT_RECURRING_MUTATION, RECURRING_TRANSACTION_ITEMS_QUERY
+
+
+async def mark_as_not_recurring(client, stream_id: str) -> dict:
+    """Mark a recurring stream as not recurring.
+
+    Removes the stream from Monarch's recurring list.
+    Returns the mutation result.
+    """
+    variables = {"input": {"id": stream_id}}
+    data = await client._request(MARK_AS_NOT_RECURRING_MUTATION, variables)
+    result = data.get("markAsNotRecurring", {})
+    errors = result.get("errors")
+    if errors:
+        msg = errors.get("message", "") if isinstance(errors, dict) else str(errors)
+        raise Exception(f"Failed to mark stream as not recurring: {msg}")
+    return result
 
 
 async def get_recurring_transaction_items(

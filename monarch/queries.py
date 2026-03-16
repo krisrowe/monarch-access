@@ -280,6 +280,22 @@ mutation Common_DeleteTransactionMutation($input: DeleteTransactionMutationInput
 }
 """
 
+MARK_AS_NOT_RECURRING_MUTATION = """
+mutation Common_MarkAsNotRecurring($input: MarkAsNotRecurringMutationInput!) {
+    markAsNotRecurring(input: $input) {
+        success
+        errors {
+            fieldErrors {
+                field
+                messages
+            }
+            message
+            code
+        }
+    }
+}
+"""
+
 RECURRING_TRANSACTION_ITEMS_QUERY = """
 query Web_GetUpcomingRecurringTransactionItems($startDate: Date!, $endDate: Date!, $filters: RecurringTransactionFilter) {
   recurringTransactionItems(
