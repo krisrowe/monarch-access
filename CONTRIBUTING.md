@@ -134,10 +134,65 @@ In the collapsed stream output, `last_paid_date: null` means no transaction was 
 
 The null is ambiguous — consumers should investigate rather than assume "never paid."
 
-### Mutation Discovery
+### Third Recurring Query: Aggregated Items
 
-Schema introspection is disabled. Known working mutations:
-- `markStreamAsNotRecurring(streamId: ID!)` — removes stream (merchant-level effect)
-- Requesting `errors { ... }` sub-fields alongside `success` causes HTTP 400. Request only `success`.
+`Common_GetAggregatedRecurringItems` is what the Monarch UI actually uses for its Upcoming/Complete view. It returns BOTH merchant-based AND credit report liability items in one response, grouped by status. Key fields not available in the other queries:
 
-Unknown: merchant update mutation for changing recurring amount/frequency/flag programmatically. The UI does this but the mutation name hasn't been captured from DevTools yet.
+- `isLate` — whether the item is past due
+- `isCompleted` — whether payment is confirmed
+- `liabilityStatement.minimumPaymentAmount` — the minimum payment due (this is where the UI gets payment amounts for credit cards and mortgages)
+- `liabilityStatement.paymentsInformation.status` — paid/unpaid/partially_paid
+- `liabilityStatement.paymentsInformation.remainingBalance` — balance after payments
+- `liabilityStatement.paymentsInformation.transactions[]` — actual payments applied
+
+This query is captured in `queries.py` as `AGGREGATED_RECURRING_ITEMS_QUERY` but not yet wired to SDK/MCP/CLI.
+
+### Discovered Mutations
+
+Schema introspection is disabled. All mutations were reverse-engineered from the Monarch web app via Chrome DevTools.
+
+**Recurring stream removal:**
+- `markStreamAsNotRecurring(streamId: ID!)` — permanently removes stream. Affects all streams for the merchant. Request only `success` — requesting `errors` sub-fields causes HTTP 400. Implemented in SDK/MCP/CLI.
+
+**Merchant update:**
+- `updateMerchant(input: UpdateMerchantInput!)` — update merchant name and recurring settings. Input shape:
+  ```json
+  {
+    "input": {
+      "merchantId": "...",
+      "name": "...",
+      "recurrence": {
+        "isRecurring": true,
+        "frequency": "monthly",
+        "baseDate": "YYYY-MM-DD",
+        "amount": -123.45,
+        "isActive": true/false
+      }
+    }
+  }
+  ```
+  Setting `isActive: false` deactivates the stream (reversible). Setting `isRecurring: false` removes it. All `recurrence` fields must be sent every time — partial updates not supported. Implemented in SDK/MCP/CLI via `update_recurring`.
+
+**Merchant logo (3-step process):**
+1. `getCloudinaryUploadInfo(input: {entityType: "merchant"})` — returns signed upload params (timestamp, folder, signature, api_key, upload_preset)
+2. POST to `https://api.cloudinary.com/v1_1/monarch-money/image/upload/` — multipart form with image file + signed params
+3. `setMerchantLogo(input: {merchantId, cloudinaryPublicId})` — associates uploaded image with merchant
+
+The `cloudinaryPublicId` from an existing merchant can be reused on other merchants to share logos. Captured in `queries.py` but not yet wired to SDK/MCP/CLI.
+
+**Merchant queries:**
+- `merchants(search: String)` — search merchants by name. Returns id, name, logoUrl, transactionsCount, canBeDeleted, createdAt, recurringTransactionStream.
+- `merchant(id: ID!)` — get single merchant by ID. Returns additional fields: transactionCount, ruleCount, hasActiveRecurringStreams.
+
+Both captured in `queries.py` but not yet wired to SDK/MCP/CLI.
+
+### Multi-Account Merchant Splitting
+
+When one merchant (e.g., an insurer) handles multiple policies from different accounts, transactions can be reassigned to new merchants:
+
+1. Use `update_transaction(id, merchant_name="New Name")` — Monarch auto-creates the merchant if it doesn't exist
+2. Set up recurring on the new merchant via `updateMerchant`
+3. Copy logo via `setMerchantLogo` with the original's `cloudinaryPublicId`
+4. Deactivate the original merchant's recurring
+
+This workflow is proven and uses existing implemented tools for steps 1-2, plus captured-but-not-yet-implemented mutations for steps 3-4.
