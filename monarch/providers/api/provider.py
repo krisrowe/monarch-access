@@ -262,6 +262,14 @@ class APIProvider:
         data = await self._client._request(RECURRING_TRANSACTION_ITEMS_QUERY, variables)
         return data.get("recurringTransactionItems", [])
 
+    def mark_as_not_recurring(self, stream_id: str) -> dict:
+        """Mark a recurring stream as not recurring."""
+        return self._run(self._mark_as_not_recurring(stream_id))
+
+    async def _mark_as_not_recurring(self, stream_id: str) -> dict:
+        from monarch.recurring import mark_as_not_recurring
+        return await mark_as_not_recurring(self._client, stream_id)
+
     def create_transaction(
         self,
         date: str,

@@ -15,9 +15,9 @@ async def mark_as_not_recurring(client, stream_id: str) -> dict:
     Removes the stream from Monarch's recurring list.
     Returns the mutation result.
     """
-    variables = {"id": stream_id}
+    variables = {"streamId": stream_id}
     data = await client._request(MARK_AS_NOT_RECURRING_MUTATION, variables)
-    result = data.get("markAsNotRecurring", {})
+    result = data.get("markStreamAsNotRecurring", {})
     errors = result.get("errors")
     if errors:
         msg = errors.get("message", "") if isinstance(errors, dict) else str(errors)

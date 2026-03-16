@@ -428,13 +428,32 @@ def _update_transaction(
         return transactions.format_single_text(updated)
 
 
-@cli.command("recurring")
+@cli.group("recurring", invoke_without_command=True)
 @click.option("--format", "output_format", type=click.Choice(["text", "json", "csv"]), default="text", help="Output format")
-def list_recurring(output_format: str):
-    """List tracked recurring obligations (bills, subscriptions, loan payments).
+@click.pass_context
+def recurring_group(ctx, output_format: str):
+    """Manage recurring obligations (bills, subscriptions, loan payments).
 
-    Shows the stable list of recurring streams with current-month payment status.
+    Without a subcommand, lists all recurring streams.
     """
+    ctx.ensure_object(dict)
+    ctx.obj["output_format"] = output_format
+    if ctx.invoked_subcommand is None:
+        try:
+            result = _list_recurring(output_format)
+            click.echo(result)
+        except AuthenticationError as e:
+            click.echo(f"Authentication error: {e}", err=True)
+            sys.exit(1)
+        except APIError as e:
+            click.echo(f"API error: {e}", err=True)
+            sys.exit(1)
+
+
+@recurring_group.command("list")
+@click.option("--format", "output_format", type=click.Choice(["text", "json", "csv"]), default="text", help="Output format")
+def recurring_list(output_format: str):
+    """List tracked recurring obligations."""
     try:
         result = _list_recurring(output_format)
         click.echo(result)
@@ -443,6 +462,28 @@ def list_recurring(output_format: str):
         sys.exit(1)
     except APIError as e:
         click.echo(f"API error: {e}", err=True)
+        sys.exit(1)
+
+
+@recurring_group.command("remove")
+@click.argument("stream_id")
+def recurring_remove(stream_id: str):
+    """Mark a recurring stream as not recurring (remove from list).
+
+    STREAM_ID is the stream ID from 'monarch recurring list --format json'.
+    """
+    try:
+        provider = get_provider()
+        result = provider.mark_as_not_recurring(stream_id)
+        click.echo(f"Removed recurring stream {stream_id}")
+    except AuthenticationError as e:
+        click.echo(f"Authentication error: {e}", err=True)
+        sys.exit(1)
+    except APIError as e:
+        click.echo(f"API error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
 

@@ -281,17 +281,9 @@ mutation Common_DeleteTransactionMutation($input: DeleteTransactionMutationInput
 """
 
 MARK_AS_NOT_RECURRING_MUTATION = """
-mutation Common_MarkAsNotRecurring($id: ID!) {
-    markAsNotRecurring(id: $id) {
+mutation Common_MarkAsNotRecurring($streamId: ID!) {
+    markStreamAsNotRecurring(streamId: $streamId) {
         success
-        errors {
-            fieldErrors {
-                field
-                messages
-            }
-            message
-            code
-        }
     }
 }
 """

@@ -705,6 +705,26 @@ async def list_recurring_tool() -> dict[str, Any]:
 
 
 @mcp.tool(
+    name="introspect_mutations",
+    description="Temporary tool to discover available GraphQL mutations. Returns mutation names and their argument types.",
+)
+async def introspect_mutations_tool(
+    filter: str = Field(default="", description="Filter mutation names containing this string (case-insensitive)"),
+) -> dict[str, Any]:
+    """Introspect the Monarch GraphQL schema for mutations."""
+    try:
+        from ..queries import INTROSPECT_MUTATIONS_QUERY
+        client = _get_client()
+        data = await client._request(INTROSPECT_MUTATIONS_QUERY, {})
+        fields = data.get("__schema", {}).get("mutationType", {}).get("fields", [])
+        if filter:
+            fields = [f for f in fields if filter.lower() in f["name"].lower()]
+        return {"mutations": fields, "count": len(fields)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool(
     name="mark_as_not_recurring",
     description="""Mark a recurring stream as not recurring, removing it from the recurring list.
 
