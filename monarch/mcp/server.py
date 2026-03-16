@@ -705,34 +705,53 @@ async def list_recurring_tool() -> dict[str, Any]:
 
 
 @mcp.tool(
-    name="introspect_mutations",
-    description="Temporary tool to discover available GraphQL mutations. Returns mutation names and their argument types.",
+    name="update_recurring",
+    description="""Update a recurring stream's status, amount, or frequency.
+
+Takes a stream_id from list_recurring and updates the underlying merchant's recurring settings.
+Only works on merchant-based streams (not credit report liabilities).
+
+Status values:
+- active: reactivate a previously deactivated stream (reversible)
+- inactive: deactivate the stream — removes from upcoming list but stays in system (reversible)
+- removed: permanently remove ALL streams for this merchant (irreversible, nuclear option)
+
+Amount and frequency can be updated independently. Only provided fields are changed.
+
+Examples:
+- Deactivate a stale stream: update_recurring(stream_id="123", status="inactive")
+- Fix wrong amount: update_recurring(stream_id="123", amount=-624.98)
+- Permanently remove: update_recurring(stream_id="123", status="removed")""",
 )
-async def introspect_mutations_tool(
-    filter: str = Field(default="", description="Filter mutation names containing this string (case-insensitive)"),
+async def update_recurring_tool(
+    stream_id: str = Field(description="The stream_id from list_recurring"),
+    status: Optional[str] = Field(default=None, description="active, inactive, or removed"),
+    amount: Optional[float] = Field(default=None, description="New recurring amount (negative for expenses)"),
+    frequency: Optional[str] = Field(default=None, description="New frequency: monthly, biweekly, weekly, etc."),
 ) -> dict[str, Any]:
-    """Introspect the Monarch GraphQL schema for mutations."""
+    """Update a recurring stream's settings."""
     try:
-        from ..queries import INTROSPECT_MUTATIONS_QUERY
+        from ..recurring import update_recurring
+
         client = _get_client()
-        data = await client._request(INTROSPECT_MUTATIONS_QUERY, {})
-        fields = data.get("__schema", {}).get("mutationType", {}).get("fields", [])
-        if filter:
-            fields = [f for f in fields if filter.lower() in f["name"].lower()]
-        return {"mutations": fields, "count": len(fields)}
+        result = await update_recurring(
+            client, stream_id,
+            status=status, amount=amount, frequency=frequency,
+        )
+        return {"success": True, "result": result}
+    except AuthenticationError as e:
+        return {"error": str(e), "success": False}
     except Exception as e:
-        return {"error": str(e)}
+        logger.error(f"Error updating recurring stream: {e}")
+        return {"error": str(e), "success": False}
 
 
 @mcp.tool(
     name="mark_as_not_recurring",
-    description="""Mark a recurring stream as not recurring, removing it from the recurring list.
+    description="""Permanently remove a recurring stream. DEPRECATED — use update_recurring with status='removed' instead.
 
-Use when a recurring stream is stale, closed, or was incorrectly detected by Monarch.
-Requires the stream_id from list_recurring output.
-
-This is a permanent action — the stream will no longer appear in list_recurring results.
-If the underlying transactions continue, Monarch may re-detect it as a new stream.""",
+This is a nuclear option that removes ALL streams for the merchant.
+Prefer update_recurring(status='inactive') for reversible deactivation.""",
 )
 async def mark_as_not_recurring_tool(
     stream_id: str = Field(description="The stream_id from list_recurring to mark as not recurring"),

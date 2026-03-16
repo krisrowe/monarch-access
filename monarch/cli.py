@@ -465,13 +465,52 @@ def recurring_list(output_format: str):
         sys.exit(1)
 
 
+@recurring_group.command("update")
+@click.argument("stream_id")
+@click.option("--status", type=click.Choice(["active", "inactive", "removed"]), help="active, inactive (reversible), or removed (permanent)")
+@click.option("--amount", type=float, help="New recurring amount (negative for expenses)")
+@click.option("--frequency", help="New frequency: monthly, biweekly, weekly, etc.")
+def recurring_update(stream_id: str, status: str, amount: float, frequency: str):
+    """Update a recurring stream's status, amount, or frequency.
+
+    STREAM_ID is the stream ID from 'monarch recurring list --format json'.
+
+    Status values:
+
+      active    — reactivate a deactivated stream
+
+      inactive  — deactivate (reversible, keeps in system)
+
+      removed   — permanently remove ALL streams for this merchant
+    """
+    if not any([status, amount, frequency]):
+        click.echo("Provide at least one of --status, --amount, or --frequency", err=True)
+        sys.exit(1)
+    try:
+        provider = get_provider()
+        result = provider.update_recurring(stream_id, status=status, amount=amount, frequency=frequency)
+        if status == "removed":
+            click.echo(f"Removed recurring stream {stream_id}")
+        else:
+            click.echo(f"Updated recurring stream {stream_id}")
+            if isinstance(result, dict) and "recurringTransactionStream" in result:
+                rts = result["recurringTransactionStream"]
+                click.echo(f"  amount: {rts.get('amount')}  frequency: {rts.get('frequency')}  isActive: {rts.get('isActive')}")
+    except AuthenticationError as e:
+        click.echo(f"Authentication error: {e}", err=True)
+        sys.exit(1)
+    except APIError as e:
+        click.echo(f"API error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
 @recurring_group.command("remove")
 @click.argument("stream_id")
 def recurring_remove(stream_id: str):
-    """Mark a recurring stream as not recurring (remove from list).
-
-    STREAM_ID is the stream ID from 'monarch recurring list --format json'.
-    """
+    """Permanently remove a recurring stream. Alias for 'update --status=removed'."""
     try:
         provider = get_provider()
         result = provider.mark_as_not_recurring(stream_id)

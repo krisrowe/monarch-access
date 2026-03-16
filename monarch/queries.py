@@ -280,6 +280,24 @@ mutation Common_DeleteTransactionMutation($input: DeleteTransactionMutationInput
 }
 """
 
+UPDATE_MERCHANT_MUTATION = """
+mutation Common_UpdateMerchant($input: UpdateMerchantInput!) {
+    updateMerchant(input: $input) {
+        merchant {
+            id
+            name
+            recurringTransactionStream {
+                id
+                frequency
+                amount
+                baseDate
+                isActive
+            }
+        }
+    }
+}
+"""
+
 MARK_AS_NOT_RECURRING_MUTATION = """
 mutation Common_MarkAsNotRecurring($streamId: ID!) {
     markStreamAsNotRecurring(streamId: $streamId) {

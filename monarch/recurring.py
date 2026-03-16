@@ -6,7 +6,111 @@ import io
 from datetime import date
 from typing import Any, Optional
 
-from .queries import MARK_AS_NOT_RECURRING_MUTATION, RECURRING_TRANSACTION_ITEMS_QUERY
+from .queries import (
+    MARK_AS_NOT_RECURRING_MUTATION,
+    RECURRING_TRANSACTION_ITEMS_QUERY,
+    UPDATE_MERCHANT_MUTATION,
+)
+
+
+async def _find_merchant_for_stream(client, stream_id: str) -> dict:
+    """Look up the merchant and its current recurring state for a given stream_id.
+
+    Uses Common_GetRecurringStreams (which includes inactive streams) to find
+    the merchant, then queries the merchant for its current recurrence settings.
+    """
+    # Use the full stream list which includes inactive streams
+    q = """query {
+        recurringTransactionStreams(includePending: true, includeLiabilities: true) {
+            stream {
+                id
+                merchant { id name }
+            }
+        }
+    }"""
+    data = await client._request(q, {})
+    all_streams = data.get("recurringTransactionStreams", [])
+
+    merchant_id = None
+    merchant_name = None
+    for item in all_streams:
+        stream = item.get("stream", {})
+        if stream.get("id") == stream_id:
+            merchant = stream.get("merchant") or {}
+            merchant_id = merchant.get("id")
+            merchant_name = merchant.get("name")
+            break
+
+    if not merchant_id:
+        raise Exception(f"Stream {stream_id} not found or has no merchant (may be a credit report liability)")
+
+    # Get current merchant state
+    q2 = """query($search: String) {
+        merchants(search: $search) {
+            id name
+            recurringTransactionStream { id frequency amount baseDate isActive }
+        }
+    }"""
+    data2 = await client._request(q2, {"search": merchant_name})
+    for m in data2.get("merchants", []):
+        if m["id"] == merchant_id:
+            return m
+
+    raise Exception(f"Merchant {merchant_id} ({merchant_name}) not found")
+
+
+async def update_recurring(
+    client,
+    stream_id: str,
+    *,
+    status: str | None = None,
+    amount: float | None = None,
+    frequency: str | None = None,
+) -> dict:
+    """Update a recurring stream's settings via its merchant.
+
+    Args:
+        stream_id: The stream_id from list_recurring.
+        status: 'active', 'inactive', or 'removed'.
+            - active: reactivate a deactivated stream
+            - inactive: deactivate (reversible, keeps in system)
+            - removed: permanently remove all streams for this merchant
+        amount: New recurring amount (negative for expenses).
+        frequency: New frequency (monthly, biweekly, weekly, etc.).
+
+    Returns the updated merchant data, or removal result.
+    """
+    if status == "removed":
+        return await mark_as_not_recurring(client, stream_id)
+
+    merchant = await _find_merchant_for_stream(client, stream_id)
+    rts = merchant.get("recurringTransactionStream") or {}
+
+    # Build recurrence object — must send all fields
+    recurrence = {
+        "isRecurring": True,
+        "frequency": frequency if frequency is not None else rts.get("frequency", "monthly"),
+        "baseDate": rts.get("baseDate", "2025-01-01"),
+        "amount": amount if amount is not None else rts.get("amount", 0),
+        "isActive": rts.get("isActive", True),
+    }
+
+    if status == "active":
+        recurrence["isActive"] = True
+    elif status == "inactive":
+        recurrence["isActive"] = False
+
+    variables = {
+        "input": {
+            "merchantId": merchant["id"],
+            "name": merchant["name"],
+            "recurrence": recurrence,
+        }
+    }
+
+    data = await client._request(UPDATE_MERCHANT_MUTATION, variables)
+    result = data.get("updateMerchant", {})
+    return result.get("merchant", result)
 
 
 async def mark_as_not_recurring(client, stream_id: str) -> dict:
