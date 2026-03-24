@@ -12,8 +12,7 @@
 service:
   entrypoint: monarch.mcp.server:mcp_app
   mcp_path: /mcp
-  runtime: cfbdce7
-  public: true
+  runtime: v0.4.0
   env:
     LOG_LEVEL: INFO
   auth: bearer
